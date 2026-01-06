@@ -1,9 +1,19 @@
 // lib/db.ts
 // Connexion Neon et lookup des clients
 
-import { neon } from '@neondatabase/serverless'
+import { neon, NeonQueryFunction } from '@neondatabase/serverless'
 
-const sql = neon(process.env.DATABASE_URL!)
+let sql: NeonQueryFunction<false, false> | null = null
+
+function getDb() {
+  if (!sql) {
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL is not set')
+    }
+    sql = neon(process.env.DATABASE_URL)
+  }
+  return sql
+}
 
 export interface Client {
   id: string
@@ -23,7 +33,8 @@ export async function findClientByPhone(phone: string): Promise<Client | null> {
     const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '')
 
     // Chercher avec ou sans le +1
-    const result = await sql`
+    const db = getDb()
+    const result = await db`
       SELECT id, name, phone, accountant, last_interaction as "lastInteraction"
       FROM clients
       WHERE phone = ${normalizedPhone}
@@ -48,7 +59,8 @@ export async function findClientByPhone(phone: string): Promise<Client | null> {
  */
 export async function initializeDatabase() {
   try {
-    await sql`
+    const db = getDb()
+    await db`
       CREATE TABLE IF NOT EXISTS clients (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
