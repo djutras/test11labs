@@ -262,48 +262,9 @@ RÈGLES:
         <strong>Status:</strong> {status || 'Prêt'}
       </div>
 
-      {/* Test 1: ElevenLabs seul */}
-      <section style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <h2>1. Test ElevenLabs (TTS)</h2>
-        <p>Convertit un texte fixe en audio.</p>
-        <button 
-          onClick={testElevenLabs} 
-          disabled={loading}
-          style={{ padding: '10px 20px', cursor: loading ? 'wait' : 'pointer' }}
-        >
-          {loading ? '⏳ En cours...' : '🔊 Tester ElevenLabs'}
-        </button>
-      </section>
-
-      {/* Test 2: Claude seul */}
-      <section style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
-        <h2>2. Test Claude (Conversation)</h2>
-        <p>Envoie un message à Claude et reçoit une réponse.</p>
-        <textarea
-          value={userMessage}
-          onChange={(e) => setUserMessage(e.target.value)}
-          rows={3}
-          style={{ width: '100%', marginBottom: '10px', padding: '10px' }}
-        />
-        <button 
-          onClick={testClaude} 
-          disabled={loading}
-          style={{ padding: '10px 20px', cursor: loading ? 'wait' : 'pointer' }}
-        >
-          {loading ? '⏳ En cours...' : '💬 Tester Claude'}
-        </button>
-        
-        {claudeResponse && (
-          <div style={{ marginTop: '15px', padding: '15px', background: '#e8f5e9', borderRadius: '8px' }}>
-            <strong>Réponse Claude:</strong>
-            <p>{claudeResponse}</p>
-          </div>
-        )}
-      </section>
-
-      {/* Test 3: Appel Sortant */}
+      {/* Section 1: Appel Sortant */}
       <section style={{ marginBottom: '30px', padding: '20px', border: '2px solid #4caf50', borderRadius: '8px', background: '#e8f5e9' }}>
-        <h2>3. 📞 Appel Sortant (ElevenLabs)</h2>
+        <h2>1. Appel Sortant (ElevenLabs)</h2>
         <p>Faire un appel téléphonique avec l'agent IA ElevenLabs.</p>
 
         <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>
@@ -459,9 +420,48 @@ RÈGLES:
         </div>
       </section>
 
-      {/* Test 4: Claude + ElevenLabs */}
+      {/* Section 2: ElevenLabs TTS */}
+      <section style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
+        <h2>2. Test ElevenLabs (TTS)</h2>
+        <p>Convertit un texte fixe en audio.</p>
+        <button
+          onClick={testElevenLabs}
+          disabled={loading}
+          style={{ padding: '10px 20px', cursor: loading ? 'wait' : 'pointer' }}
+        >
+          {loading ? '⏳ En cours...' : 'Tester ElevenLabs'}
+        </button>
+      </section>
+
+      {/* Section 3: Claude */}
+      <section style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px' }}>
+        <h2>3. Test Claude (Conversation)</h2>
+        <p>Envoie un message à Claude et reçoit une réponse.</p>
+        <textarea
+          value={userMessage}
+          onChange={(e) => setUserMessage(e.target.value)}
+          rows={3}
+          style={{ width: '100%', marginBottom: '10px', padding: '10px' }}
+        />
+        <button
+          onClick={testClaude}
+          disabled={loading}
+          style={{ padding: '10px 20px', cursor: loading ? 'wait' : 'pointer' }}
+        >
+          {loading ? '⏳ En cours...' : 'Tester Claude'}
+        </button>
+
+        {claudeResponse && (
+          <div style={{ marginTop: '15px', padding: '15px', background: '#e8f5e9', borderRadius: '8px' }}>
+            <strong>Réponse Claude:</strong>
+            <p>{claudeResponse}</p>
+          </div>
+        )}
+      </section>
+
+      {/* Section 4: Claude + ElevenLabs */}
       <section style={{ marginBottom: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', background: '#fff3e0' }}>
-        <h2>4. Test Complet (Claude → ElevenLabs)</h2>
+        <h2>4. Test Complet (Claude + ElevenLabs)</h2>
         <p>Claude répond, puis ElevenLabs convertit en voix.</p>
         <button 
           onClick={testFull} 
@@ -484,7 +484,7 @@ RÈGLES:
 
       {/* Info Twilio */}
       <section style={{ marginTop: '30px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', background: '#f5f5f5' }}>
-        <h2>4. Test Appels Twilio</h2>
+        <h2>5. Test Appels Twilio</h2>
         <p>Pour tester les appels entrants:</p>
         <ol>
           <li>Lance ngrok: <code>ngrok http 3000</code></li>
