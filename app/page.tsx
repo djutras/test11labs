@@ -1,8 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 export default function TestPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const [status, setStatus] = useState<string>('')
   const [loading, setLoading] = useState<boolean>(false)
   const [audioUrl, setAudioUrl] = useState<string | null>(null)
@@ -23,10 +25,26 @@ RÈGLES:
   const [conversationId, setConversationId] = useState<string>('')
   const [conversationData, setConversationData] = useState<any>(null)
   const [callAudioUrl, setCallAudioUrl] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
+    const auth = localStorage.getItem('authenticated')
+    if (auth !== 'true') {
+      router.push('/login')
+    } else {
+      setIsAuthenticated(true)
+    }
     setOrigin(window.location.origin)
-  }, [])
+  }, [router])
+
+  const handleLogout = () => {
+    localStorage.removeItem('authenticated')
+    router.push('/login')
+  }
+
+  if (isAuthenticated === null) {
+    return <div>Chargement...</div>
+  }
 
   // Test 1: ElevenLabs TTS
   const testElevenLabs = async () => {
@@ -223,7 +241,22 @@ RÈGLES:
 
   return (
     <div>
-      <h1>🎙️ Test ElevenLabs + Claude</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Test ElevenLabs + Claude</h1>
+        <button
+          onClick={handleLogout}
+          style={{
+            padding: '8px 16px',
+            background: '#f44336',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer'
+          }}
+        >
+          Deconnexion
+        </button>
+      </div>
       
       <div style={{ background: '#f0f0f0', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
         <strong>Status:</strong> {status || 'Prêt'}
