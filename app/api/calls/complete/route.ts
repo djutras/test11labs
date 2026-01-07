@@ -172,7 +172,13 @@ async function sendEmailNotification(params: {
 
   // Format transcript for email
   let transcriptText = 'No transcript available'
-  if (params.transcript?.transcript) {
+  if (Array.isArray(params.transcript)) {
+    // Direct array format
+    transcriptText = params.transcript
+      .map((t: any) => `${t.role}: ${t.message}`)
+      .join('\n')
+  } else if (params.transcript?.transcript) {
+    // Nested format (transcript.transcript)
     transcriptText = params.transcript.transcript
       .map((t: any) => `${t.role}: ${t.message}`)
       .join('\n')
