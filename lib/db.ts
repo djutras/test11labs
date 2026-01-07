@@ -197,6 +197,43 @@ export async function initializeDatabase() {
     await db`CREATE INDEX IF NOT EXISTS idx_call_logs_created_at ON call_logs(created_at DESC)`
     await db`CREATE INDEX IF NOT EXISTS idx_dnc_list_phone ON dnc_list(phone)`
 
+    // Add missing columns to campaigns table (for migrations from older schema)
+    await db`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'creator_email') THEN
+          ALTER TABLE campaigns ADD COLUMN creator_email VARCHAR(255);
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'call_days') THEN
+          ALTER TABLE campaigns ADD COLUMN call_days VARCHAR(50)[];
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'call_start_hour') THEN
+          ALTER TABLE campaigns ADD COLUMN call_start_hour INT DEFAULT 9;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'call_end_hour') THEN
+          ALTER TABLE campaigns ADD COLUMN call_end_hour INT DEFAULT 19;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'timezone') THEN
+          ALTER TABLE campaigns ADD COLUMN timezone VARCHAR(50) DEFAULT 'America/Toronto';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'priority') THEN
+          ALTER TABLE campaigns ADD COLUMN priority INT DEFAULT 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'voicemail_action') THEN
+          ALTER TABLE campaigns ADD COLUMN voicemail_action VARCHAR(20) DEFAULT 'hangup';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'voicemail_message') THEN
+          ALTER TABLE campaigns ADD COLUMN voicemail_message TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'recording_disclosure') THEN
+          ALTER TABLE campaigns ADD COLUMN recording_disclosure TEXT DEFAULT 'This call may be recorded for quality purposes.';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'status') THEN
+          ALTER TABLE campaigns ADD COLUMN status VARCHAR(20) DEFAULT 'active';
+        END IF;
+      END $$;
+    `
+
     console.log('[DB] All tables initialized')
   } catch (error) {
     console.error('[DB] Error initializing database:', error)
