@@ -166,7 +166,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
         const scheduledCall = await createScheduledCall({
           campaignId,
-          clientId: client.id,
+          clientId: null, // Use null to avoid FK constraint with old clients table
           phone: contact.phone,
           name: contact.name,
           firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
