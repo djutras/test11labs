@@ -90,6 +90,43 @@ export default function CampaignDetailPage() {
   const [selectedTranscript, setSelectedTranscript] = useState<CallLogData | null>(null)
   const [selectedCallName, setSelectedCallName] = useState<string>('')
 
+  // Call in progress state
+  const [callingId, setCallingId] = useState<string | null>(null)
+
+  const handleMakeCall = async (scheduledCallId: string, phone: string, name: string | null) => {
+    if (callingId) return // Already calling
+
+    setCallingId(scheduledCallId)
+    setError(null)
+
+    try {
+      const response = await fetch('/api/outbound-call', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phoneNumber: phone,
+          scheduledCallId,
+          campaignId,
+          firstMessage: campaign?.firstMessage || undefined,
+          fullPrompt: campaign?.fullPrompt || undefined
+        })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        // Refresh campaign to get updated status
+        await loadCampaign()
+      } else {
+        setError(data.error || (language === 'fr' ? 'Erreur lors de l\'appel' : 'Call failed'))
+      }
+    } catch (err) {
+      setError(language === 'fr' ? 'Erreur lors de l\'appel' : 'Call failed')
+    } finally {
+      setCallingId(null)
+    }
+  }
+
   const openTranscriptModal = (callLog: CallLogData, name: string) => {
     setSelectedTranscript(callLog)
     setSelectedCallName(name)
@@ -572,32 +609,56 @@ export default function CampaignDetailPage() {
                     </td>
                     <td className="py-3 px-4 text-sm">{call.retryCount}</td>
                     <td className="py-3 px-4">
-                      {call.callLog ? (
-                        <div className="flex gap-2">
-                          {call.callLog.transcript && (
-                            <button
-                              onClick={() => openTranscriptModal(call.callLog!, call.name || call.phone)}
-                              className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs transition"
-                              title={language === 'fr' ? 'Voir le transcript' : 'View transcript'}
-                            >
-                              {language === 'fr' ? 'Transcript' : 'Transcript'}
-                            </button>
-                          )}
-                          {call.callLog.audioUrl && (
-                            <a
-                              href={`/api/conversation/${call.callLog.conversationId}/audio`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="px-2 py-1 bg-green-600 hover:bg-green-500 rounded text-xs transition"
-                              title={language === 'fr' ? 'Écouter l\'enregistrement' : 'Listen to recording'}
-                            >
-                              {language === 'fr' ? 'Audio' : 'Audio'}
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-gray-500 text-xs">-</span>
-                      )}
+                      <div className="flex gap-2">
+                        {/* Call button for pending calls */}
+                        {(call.status === 'pending' || call.status === 'no_answer' || call.status === 'failed') && (
+                          <button
+                            onClick={() => handleMakeCall(call.id, call.phone, call.name)}
+                            disabled={callingId !== null}
+                            className={`px-2 py-1 rounded text-xs transition ${
+                              callingId === call.id
+                                ? 'bg-yellow-600 cursor-wait'
+                                : callingId
+                                ? 'bg-gray-600 cursor-not-allowed'
+                                : 'bg-orange-600 hover:bg-orange-500'
+                            }`}
+                            title={language === 'fr' ? 'Lancer l\'appel' : 'Make call'}
+                          >
+                            {callingId === call.id
+                              ? (language === 'fr' ? 'Appel...' : 'Calling...')
+                              : (language === 'fr' ? 'Appeler' : 'Call')}
+                          </button>
+                        )}
+                        {/* Transcript/Audio buttons when call completed */}
+                        {call.callLog && (
+                          <>
+                            {call.callLog.transcript && (
+                              <button
+                                onClick={() => openTranscriptModal(call.callLog!, call.name || call.phone)}
+                                className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs transition"
+                                title={language === 'fr' ? 'Voir le transcript' : 'View transcript'}
+                              >
+                                {language === 'fr' ? 'Transcript' : 'Transcript'}
+                              </button>
+                            )}
+                            {call.callLog.audioUrl && (
+                              <a
+                                href={`/api/conversation/${call.callLog.conversationId}/audio`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2 py-1 bg-green-600 hover:bg-green-500 rounded text-xs transition"
+                                title={language === 'fr' ? 'Écouter l\'enregistrement' : 'Listen to recording'}
+                              >
+                                {language === 'fr' ? 'Audio' : 'Audio'}
+                              </a>
+                            )}
+                          </>
+                        )}
+                        {/* Show dash if no actions available */}
+                        {!call.callLog && call.status !== 'pending' && call.status !== 'no_answer' && call.status !== 'failed' && (
+                          <span className="text-gray-500 text-xs">-</span>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
