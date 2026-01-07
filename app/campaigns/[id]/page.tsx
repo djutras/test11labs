@@ -665,6 +665,21 @@ export default function CampaignDetailPage() {
                         {!call.callLog && call.status !== 'pending' && call.status !== 'no_answer' && call.status !== 'failed' && (
                           <span className="text-gray-500 text-xs">-</span>
                         )}
+                        {/* Boutons historique (-) et futur (+) */}
+                        <Link
+                          href={`/campaigns/${campaignId}/client/${encodeURIComponent(call.phone)}`}
+                          className="px-2 py-1 bg-orange-600 hover:bg-orange-500 rounded text-xs transition"
+                          title={language === 'fr' ? 'Historique passé' : 'Past history'}
+                        >
+                          −
+                        </Link>
+                        <Link
+                          href={`/campaigns/${campaignId}/client/${encodeURIComponent(call.phone)}/future`}
+                          className="px-2 py-1 bg-teal-600 hover:bg-teal-500 rounded text-xs transition"
+                          title={language === 'fr' ? 'Appels futurs' : 'Future calls'}
+                        >
+                          +
+                        </Link>
                       </div>
                     </td>
                   </tr>

@@ -993,3 +993,73 @@ export async function getClientCallHistoryByPhone(campaignId: string, phone: str
     return null
   }
 }
+
+// Get future scheduled calls for a client by phone
+export async function getClientFutureCallsByPhone(campaignId: string, phone: string): Promise<{
+  clientName: string
+  phone: string
+  campaignName: string
+  futureCalls: Array<{
+    id: string
+    scheduledAt: string
+    status: string
+    retryCount: number
+    createdAt: string
+  }>
+} | null> {
+  try {
+    const db = getDb()
+
+    // Get campaign name
+    const campaigns = await db`
+      SELECT name FROM campaigns WHERE id = ${campaignId}
+    `
+    const campaignName = campaigns[0]?.name || 'Unknown Campaign'
+
+    // Get all future scheduled calls for this phone in this campaign
+    const futureCalls = await db`
+      SELECT id, name, phone, scheduled_at as "scheduledAt", status,
+             retry_count as "retryCount", created_at as "createdAt"
+      FROM scheduled_calls
+      WHERE campaign_id = ${campaignId}
+        AND phone = ${phone}
+        AND (status = 'pending' OR scheduled_at > NOW())
+      ORDER BY scheduled_at ASC
+    `
+
+    if (futureCalls.length === 0) {
+      // Still return client info even if no future calls
+      const anyCall = await db`
+        SELECT name FROM scheduled_calls
+        WHERE campaign_id = ${campaignId} AND phone = ${phone}
+        LIMIT 1
+      `
+      const clientName = anyCall[0]?.name || 'Unknown'
+
+      return {
+        clientName,
+        phone,
+        campaignName,
+        futureCalls: []
+      }
+    }
+
+    const clientName = futureCalls[0].name || 'Unknown'
+
+    return {
+      clientName,
+      phone,
+      campaignName,
+      futureCalls: futureCalls.map((fc: any) => ({
+        id: fc.id,
+        scheduledAt: fc.scheduledAt,
+        status: fc.status,
+        retryCount: fc.retryCount,
+        createdAt: fc.createdAt
+      }))
+    }
+  } catch (error) {
+    console.error('[DB] Error getting future calls:', error)
+    return null
+  }
+}
