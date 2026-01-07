@@ -427,7 +427,7 @@ export default function CampaignDetailPage() {
       <div className="bg-gray-800 rounded-lg p-6 mb-8">
         <h2 className="text-xl font-semibold mb-4">Upload Contacts</h2>
         <p className="text-gray-400 text-sm mb-4">
-          Upload a CSV file with columns: phone (required), name (optional)
+          Upload a CSV file with columns: phone (required), name (optional), subject (optional)
         </p>
 
         <div className="flex items-center gap-4">
@@ -565,7 +565,7 @@ export default function CampaignDetailPage() {
                   />
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-gray-400 text-sm">
-                      Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>
+                      Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
                     </p>
                     <button
                       type="button"
@@ -600,7 +600,7 @@ export default function CampaignDetailPage() {
                   />
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-gray-400 text-sm">
-                      Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>
+                      Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
                     </p>
                     <button
                       type="button"

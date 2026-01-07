@@ -159,7 +159,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         }
 
         // Create scheduled call with campaign messages (variables replaced with contact data)
-        const contactData = { name: contact.name, phone: contact.phone }
+        const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
         const scheduledCall = await createScheduledCall({
           campaignId,
           clientId: client.id,

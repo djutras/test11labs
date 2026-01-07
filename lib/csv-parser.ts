@@ -5,6 +5,7 @@
 export interface CsvContact {
   phone: string
   name?: string
+  subject?: string
 }
 
 export interface ParseResult {
@@ -51,6 +52,9 @@ export function parseCsv(csvContent: string): ParseResult {
   const nameIndex = headers.findIndex(h =>
     h === 'name' || h === 'nom' || h === 'client' || h === 'client_name' || h === 'clientname'
   )
+  const subjectIndex = headers.findIndex(h =>
+    h === 'subject' || h === 'sujet' || h === 'reason' || h === 'raison' || h === 'topic'
+  )
 
   if (phoneIndex === -1) {
     result.success = false
@@ -94,7 +98,8 @@ export function parseCsv(csvContent: string): ParseResult {
       // Build contact object
       const contact: CsvContact = {
         phone,
-        name: nameIndex >= 0 ? values[nameIndex]?.trim() || undefined : undefined
+        name: nameIndex >= 0 ? values[nameIndex]?.trim() || undefined : undefined,
+        subject: subjectIndex >= 0 ? values[subjectIndex]?.trim() || undefined : undefined
       }
 
       result.contacts.push(contact)
@@ -189,8 +194,8 @@ function normalizePhone(phone: string): string | null {
  * Generate a sample CSV template
  */
 export function generateCsvTemplate(): string {
-  return `phone,name
-+15145551234,John Smith
-+15145555678,Marie Tremblay
-5145559012,Pierre Dubois`
+  return `phone,name,subject
++15145551234,John Smith,Tax return follow-up
++15145555678,Marie Tremblay,Invoice question
+5145559012,Pierre Dubois,New client consultation`
 }

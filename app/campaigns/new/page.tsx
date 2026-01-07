@@ -220,7 +220,7 @@ export default function NewCampaignPage() {
             />
             <div className="flex items-center justify-between mt-2">
               <p className="text-gray-400 text-sm">
-                Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>
+                Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
               </p>
               <button
                 type="button"
@@ -255,7 +255,7 @@ export default function NewCampaignPage() {
             />
             <div className="flex items-center justify-between mt-2">
               <p className="text-gray-400 text-sm">
-                Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>
+                Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
               </p>
               <button
                 type="button"

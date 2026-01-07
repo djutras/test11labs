@@ -4,11 +4,12 @@
 export interface ContactData {
   name?: string
   phone?: string
+  subject?: string
 }
 
 /**
  * Replace {{variable}} placeholders in a message with actual contact data
- * Supported variables: {{name}}, {{phone}}
+ * Supported variables: {{name}}, {{phone}}, {{subject}}
  *
  * @param message - The message template with {{variable}} placeholders
  * @param contact - The contact data to use for replacement
@@ -25,6 +26,9 @@ export function replaceVariables(message: string | undefined | null, contact: Co
   // Replace {{phone}} - use empty string if not provided
   result = result.replace(/\{\{phone\}\}/gi, contact.phone || '')
 
+  // Replace {{subject}} - use empty string if not provided
+  result = result.replace(/\{\{subject\}\}/gi, contact.subject || '')
+
   return result.trim()
 }
 
@@ -34,7 +38,8 @@ export function replaceVariables(message: string | undefined | null, contact: Co
 export function getSupportedVariables(): { variable: string; description: string }[] {
   return [
     { variable: '{{name}}', description: "Contact's name from CSV" },
-    { variable: '{{phone}}', description: "Contact's phone number" }
+    { variable: '{{phone}}', description: "Contact's phone number" },
+    { variable: '{{subject}}', description: "Subject/reason for call from CSV" }
   ]
 }
 
