@@ -599,7 +599,14 @@ export default function CampaignDetailPage() {
               <tbody>
                 {campaign.scheduledCalls.slice(0, 50).map((call) => (
                   <tr key={call.id} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                    <td className="py-3 px-4">{call.name || (language === 'fr' ? 'Inconnu' : 'Unknown')}</td>
+                    <td className="py-3 px-4">
+                      <Link
+                        href={`/campaigns/${campaignId}/client/${encodeURIComponent(call.phone)}`}
+                        className="text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        {call.name || (language === 'fr' ? 'Inconnu' : 'Unknown')}
+                      </Link>
+                    </td>
                     <td className="py-3 px-4 font-mono text-sm">{call.phone}</td>
                     <td className="py-3 px-4 text-sm">{formatDate(call.scheduledAt)}</td>
                     <td className="py-3 px-4">
