@@ -26,18 +26,24 @@ export async function POST(request: Request) {
     console.log('[ElevenLabs Webhook] Received:', JSON.stringify(body, null, 2))
 
     // Extract data from ElevenLabs webhook payload
-    // The exact structure depends on ElevenLabs webhook format
-    const conversationId = body.conversation_id || body.conversationId
-    const callStatus = body.status || body.call_status
-    const callDuration = body.duration || body.call_duration || 0
+    // ElevenLabs sends data nested under 'data' field for post_call_transcription type
+    const webhookType = body.type
+    const data = body.data || body
 
+    const conversationId = data.conversation_id || data.conversationId || body.conversation_id || body.conversationId
+    const callStatus = data.status || data.call_status || body.status || body.call_status
+    const callDuration = data.call_duration_secs || data.duration || data.call_duration || body.duration || body.call_duration || 0
+
+    console.log('[ElevenLabs Webhook] type:', webhookType)
     console.log('[ElevenLabs Webhook] conversationId:', conversationId)
     console.log('[ElevenLabs Webhook] callStatus:', callStatus)
+    console.log('[ElevenLabs Webhook] callDuration:', callDuration)
 
     // If we don't have scheduledCallId/campaignId from query params,
     // look them up from the call_log using conversation_id
     let callLogId: string | undefined
-    let phone = body.to_number || body.phone || ''
+    let phone = data.to_number || data.user_id || data.phone || body.to_number || body.phone || ''
+    console.log('[ElevenLabs Webhook] phone:', phone)
 
     if (conversationId && (!scheduledCallId || !campaignId)) {
       const callLog = await getCallLogByConversationId(conversationId)
