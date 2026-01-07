@@ -1,5 +1,5 @@
 // lib/db.ts
-// Connexion Neon et lookup des clients
+// Database connection and queries for the call campaign system
 
 import { neon, NeonQueryFunction } from '@neondatabase/serverless'
 
@@ -15,51 +15,93 @@ function getDb() {
   return sql
 }
 
+// ============================================
+// INTERFACES
+// ============================================
+
 export interface Client {
   id: string
   name: string
   phone: string
-  accountant: string
+  accountant?: string
   lastInteraction?: string
+  campaignId?: string
+  isActive: boolean
+  tags?: string[]
+  notes?: string
+  createdAt?: string
+  updatedAt?: string
 }
 
-/**
- * Recherche un client par son numéro de téléphone
- * Le numéro peut être au format +15145551234 ou 5145551234
- */
-export async function findClientByPhone(phone: string): Promise<Client | null> {
-  try {
-    // Normaliser le numéro (enlever espaces, tirets, etc.)
-    const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '')
-
-    // Chercher avec ou sans le +1
-    const db = getDb()
-    const result = await db`
-      SELECT id, name, phone, accountant, last_interaction as "lastInteraction"
-      FROM clients
-      WHERE phone = ${normalizedPhone}
-         OR phone = ${normalizedPhone.replace('+1', '')}
-         OR phone = ${'+1' + normalizedPhone.replace('+1', '')}
-      LIMIT 1
-    `
-
-    if (result.length === 0) {
-      return null
-    }
-
-    return result[0] as Client
-  } catch (error) {
-    console.error('[DB] Error finding client:', error)
-    return null
-  }
+export interface Campaign {
+  id: string
+  name: string
+  creatorEmail: string
+  callDays: string[]
+  callStartHour: number
+  callEndHour: number
+  timezone: string
+  priority: number
+  voicemailAction: 'hangup' | 'leave_message' | 'retry'
+  voicemailMessage?: string
+  recordingDisclosure: string
+  status: 'active' | 'paused' | 'completed'
+  createdAt: string
+  updatedAt: string
 }
 
-/**
- * Crée la table clients si elle n'existe pas
- */
+export interface ScheduledCall {
+  id: string
+  campaignId: string
+  clientId?: string
+  phone: string
+  name?: string
+  firstMessage?: string
+  fullPrompt?: string
+  scheduledAt: string
+  status: 'pending' | 'in_progress' | 'completed' | 'answered' | 'voicemail' | 'no_answer' | 'busy' | 'invalid' | 'failed' | 'skipped' | 'dnc'
+  retryCount: number
+  skippedReason?: string
+  createdAt: string
+}
+
+export interface CallLog {
+  id: string
+  campaignId?: string
+  clientId?: string
+  scheduledCallId?: string
+  conversationId?: string
+  callSid?: string
+  direction: 'outbound' | 'inbound'
+  phone: string
+  duration?: number
+  outcome?: 'answered' | 'voicemail' | 'no_answer' | 'busy' | 'invalid' | 'failed'
+  transcript?: Record<string, unknown>
+  audioUrl?: string
+  notes?: string
+  reviewStatus: 'pending' | 'reviewed' | 'needs_follow_up'
+  emailSent: boolean
+  createdAt: string
+}
+
+export interface DncEntry {
+  id: string
+  phone: string
+  reason?: string
+  addedBy: 'manual' | 'call_opt_out' | 'system'
+  campaignId?: string // NULL = global DNC
+  createdAt: string
+}
+
+// ============================================
+// DATABASE INITIALIZATION
+// ============================================
+
 export async function initializeDatabase() {
   try {
     const db = getDb()
+
+    // Create clients table
     await db`
       CREATE TABLE IF NOT EXISTS clients (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -67,12 +109,684 @@ export async function initializeDatabase() {
         phone VARCHAR(20) NOT NULL UNIQUE,
         accountant VARCHAR(255),
         last_interaction TEXT,
+        campaign_id UUID,
+        is_active BOOLEAN DEFAULT TRUE,
+        tags VARCHAR(100)[],
+        notes TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )
     `
-    console.log('[DB] Table clients initialized')
+
+    // Create campaigns table
+    await db`
+      CREATE TABLE IF NOT EXISTS campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        creator_email VARCHAR(255) NOT NULL,
+        call_days VARCHAR(50)[],
+        call_start_hour INT DEFAULT 9,
+        call_end_hour INT DEFAULT 19,
+        timezone VARCHAR(50) DEFAULT 'America/Toronto',
+        priority INT DEFAULT 1,
+        voicemail_action VARCHAR(20) DEFAULT 'hangup',
+        voicemail_message TEXT,
+        recording_disclosure TEXT DEFAULT 'This call may be recorded for quality purposes.',
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
+    // Create scheduled_calls table
+    await db`
+      CREATE TABLE IF NOT EXISTS scheduled_calls (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
+        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        phone VARCHAR(20) NOT NULL,
+        name VARCHAR(255),
+        first_message TEXT,
+        full_prompt TEXT,
+        scheduled_at TIMESTAMP NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending',
+        retry_count INT DEFAULT 0,
+        skipped_reason TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
+    // Create call_logs table
+    await db`
+      CREATE TABLE IF NOT EXISTS call_logs (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
+        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        scheduled_call_id UUID REFERENCES scheduled_calls(id) ON DELETE SET NULL,
+        conversation_id VARCHAR(255),
+        call_sid VARCHAR(255),
+        direction VARCHAR(10),
+        phone VARCHAR(20),
+        duration INT,
+        outcome VARCHAR(20),
+        transcript JSONB,
+        audio_url TEXT,
+        notes TEXT,
+        review_status VARCHAR(20) DEFAULT 'pending',
+        email_sent BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
+    // Create dnc_list table
+    await db`
+      CREATE TABLE IF NOT EXISTS dnc_list (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        phone VARCHAR(20) NOT NULL,
+        reason VARCHAR(255),
+        added_by VARCHAR(50),
+        campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(phone, campaign_id)
+      )
+    `
+
+    // Create indexes for performance
+    await db`CREATE INDEX IF NOT EXISTS idx_scheduled_calls_status ON scheduled_calls(status)`
+    await db`CREATE INDEX IF NOT EXISTS idx_scheduled_calls_scheduled_at ON scheduled_calls(scheduled_at)`
+    await db`CREATE INDEX IF NOT EXISTS idx_call_logs_created_at ON call_logs(created_at DESC)`
+    await db`CREATE INDEX IF NOT EXISTS idx_dnc_list_phone ON dnc_list(phone)`
+
+    console.log('[DB] All tables initialized')
   } catch (error) {
     console.error('[DB] Error initializing database:', error)
+    throw error
+  }
+}
+
+// ============================================
+// CLIENT QUERIES
+// ============================================
+
+export async function findClientByPhone(phone: string): Promise<Client | null> {
+  try {
+    const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '')
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, phone, accountant, last_interaction as "lastInteraction",
+             campaign_id as "campaignId", is_active as "isActive", tags, notes,
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM clients
+      WHERE phone = ${normalizedPhone}
+         OR phone = ${normalizedPhone.replace('+1', '')}
+         OR phone = ${'+1' + normalizedPhone.replace('+1', '')}
+      LIMIT 1
+    `
+    return result.length > 0 ? result[0] as Client : null
+  } catch (error) {
+    console.error('[DB] Error finding client:', error)
+    return null
+  }
+}
+
+export async function createClient(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>): Promise<Client | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      INSERT INTO clients (name, phone, accountant, campaign_id, is_active, tags, notes)
+      VALUES (${client.name}, ${client.phone}, ${client.accountant || null},
+              ${client.campaignId || null}, ${client.isActive ?? true},
+              ${client.tags || []}, ${client.notes || null})
+      ON CONFLICT (phone) DO UPDATE SET
+        name = EXCLUDED.name,
+        campaign_id = COALESCE(EXCLUDED.campaign_id, clients.campaign_id),
+        updated_at = NOW()
+      RETURNING id, name, phone, accountant, campaign_id as "campaignId",
+                is_active as "isActive", tags, notes,
+                created_at as "createdAt", updated_at as "updatedAt"
+    `
+    return result[0] as Client
+  } catch (error) {
+    console.error('[DB] Error creating client:', error)
+    return null
+  }
+}
+
+export async function updateClient(id: string, updates: Partial<Client>): Promise<Client | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE clients SET
+        name = COALESCE(${updates.name || null}, name),
+        is_active = COALESCE(${updates.isActive ?? null}, is_active),
+        tags = COALESCE(${updates.tags || null}, tags),
+        notes = COALESCE(${updates.notes || null}, notes),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, name, phone, accountant, campaign_id as "campaignId",
+                is_active as "isActive", tags, notes,
+                created_at as "createdAt", updated_at as "updatedAt"
+    `
+    return result.length > 0 ? result[0] as Client : null
+  } catch (error) {
+    console.error('[DB] Error updating client:', error)
+    return null
+  }
+}
+
+export async function getClientById(id: string): Promise<Client | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, phone, accountant, last_interaction as "lastInteraction",
+             campaign_id as "campaignId", is_active as "isActive", tags, notes,
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM clients WHERE id = ${id}
+    `
+    return result.length > 0 ? result[0] as Client : null
+  } catch (error) {
+    console.error('[DB] Error getting client:', error)
+    return null
+  }
+}
+
+// ============================================
+// CAMPAIGN QUERIES
+// ============================================
+
+export async function createCampaign(campaign: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<Campaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      INSERT INTO campaigns (name, creator_email, call_days, call_start_hour, call_end_hour,
+                            timezone, priority, voicemail_action, voicemail_message,
+                            recording_disclosure, status)
+      VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.callDays},
+              ${campaign.callStartHour}, ${campaign.callEndHour}, ${campaign.timezone},
+              ${campaign.priority}, ${campaign.voicemailAction}, ${campaign.voicemailMessage || null},
+              ${campaign.recordingDisclosure}, ${campaign.status})
+      RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
+                call_start_hour as "callStartHour", call_end_hour as "callEndHour",
+                timezone, priority, voicemail_action as "voicemailAction",
+                voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+                status, created_at as "createdAt", updated_at as "updatedAt"
+    `
+    return result[0] as Campaign
+  } catch (error) {
+    console.error('[DB] Error creating campaign:', error)
+    return null
+  }
+}
+
+export async function getCampaigns(): Promise<Campaign[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, creator_email as "creatorEmail", call_days as "callDays",
+             call_start_hour as "callStartHour", call_end_hour as "callEndHour",
+             timezone, priority, voicemail_action as "voicemailAction",
+             voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+             status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM campaigns
+      ORDER BY created_at DESC
+    `
+    return result as Campaign[]
+  } catch (error) {
+    console.error('[DB] Error getting campaigns:', error)
+    return []
+  }
+}
+
+export async function getCampaignById(id: string): Promise<Campaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, creator_email as "creatorEmail", call_days as "callDays",
+             call_start_hour as "callStartHour", call_end_hour as "callEndHour",
+             timezone, priority, voicemail_action as "voicemailAction",
+             voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+             status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM campaigns WHERE id = ${id}
+    `
+    return result.length > 0 ? result[0] as Campaign : null
+  } catch (error) {
+    console.error('[DB] Error getting campaign:', error)
+    return null
+  }
+}
+
+export async function updateCampaign(id: string, updates: Partial<Campaign>): Promise<Campaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE campaigns SET
+        name = COALESCE(${updates.name || null}, name),
+        call_days = COALESCE(${updates.callDays || null}, call_days),
+        call_start_hour = COALESCE(${updates.callStartHour ?? null}, call_start_hour),
+        call_end_hour = COALESCE(${updates.callEndHour ?? null}, call_end_hour),
+        priority = COALESCE(${updates.priority ?? null}, priority),
+        voicemail_action = COALESCE(${updates.voicemailAction || null}, voicemail_action),
+        voicemail_message = COALESCE(${updates.voicemailMessage || null}, voicemail_message),
+        recording_disclosure = COALESCE(${updates.recordingDisclosure || null}, recording_disclosure),
+        status = COALESCE(${updates.status || null}, status),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
+                call_start_hour as "callStartHour", call_end_hour as "callEndHour",
+                timezone, priority, voicemail_action as "voicemailAction",
+                voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+                status, created_at as "createdAt", updated_at as "updatedAt"
+    `
+    return result.length > 0 ? result[0] as Campaign : null
+  } catch (error) {
+    console.error('[DB] Error updating campaign:', error)
+    return null
+  }
+}
+
+export async function deleteCampaign(id: string): Promise<boolean> {
+  try {
+    const db = getDb()
+    await db`DELETE FROM campaigns WHERE id = ${id}`
+    return true
+  } catch (error) {
+    console.error('[DB] Error deleting campaign:', error)
+    return false
+  }
+}
+
+export async function getCampaignStats(campaignId: string): Promise<{
+  totalContacts: number
+  pending: number
+  completed: number
+  answered: number
+  failed: number
+  avgDuration: number
+}> {
+  try {
+    const db = getDb()
+    const stats = await db`
+      SELECT
+        COUNT(*) as "totalContacts",
+        COUNT(*) FILTER (WHERE status = 'pending') as "pending",
+        COUNT(*) FILTER (WHERE status IN ('completed', 'answered', 'voicemail', 'no_answer', 'busy', 'invalid', 'failed')) as "completed",
+        COUNT(*) FILTER (WHERE status = 'answered') as "answered",
+        COUNT(*) FILTER (WHERE status IN ('failed', 'invalid')) as "failed"
+      FROM scheduled_calls
+      WHERE campaign_id = ${campaignId}
+    `
+
+    const durationStats = await db`
+      SELECT COALESCE(AVG(duration), 0) as "avgDuration"
+      FROM call_logs
+      WHERE campaign_id = ${campaignId} AND duration IS NOT NULL
+    `
+
+    return {
+      totalContacts: Number(stats[0]?.totalContacts || 0),
+      pending: Number(stats[0]?.pending || 0),
+      completed: Number(stats[0]?.completed || 0),
+      answered: Number(stats[0]?.answered || 0),
+      failed: Number(stats[0]?.failed || 0),
+      avgDuration: Number(durationStats[0]?.avgDuration || 0)
+    }
+  } catch (error) {
+    console.error('[DB] Error getting campaign stats:', error)
+    return { totalContacts: 0, pending: 0, completed: 0, answered: 0, failed: 0, avgDuration: 0 }
+  }
+}
+
+// ============================================
+// SCHEDULED CALLS QUERIES
+// ============================================
+
+export async function createScheduledCall(call: Omit<ScheduledCall, 'id' | 'createdAt'>): Promise<ScheduledCall | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      INSERT INTO scheduled_calls (campaign_id, client_id, phone, name, first_message,
+                                   full_prompt, scheduled_at, status, retry_count)
+      VALUES (${call.campaignId}, ${call.clientId || null}, ${call.phone}, ${call.name || null},
+              ${call.firstMessage || null}, ${call.fullPrompt || null}, ${call.scheduledAt},
+              ${call.status}, ${call.retryCount})
+      RETURNING id, campaign_id as "campaignId", client_id as "clientId", phone, name,
+                first_message as "firstMessage", full_prompt as "fullPrompt",
+                scheduled_at as "scheduledAt", status, retry_count as "retryCount",
+                skipped_reason as "skippedReason", created_at as "createdAt"
+    `
+    return result[0] as ScheduledCall
+  } catch (error) {
+    console.error('[DB] Error creating scheduled call:', error)
+    return null
+  }
+}
+
+export async function getNextPendingCall(): Promise<ScheduledCall | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT sc.id, sc.campaign_id as "campaignId", sc.client_id as "clientId", sc.phone, sc.name,
+             sc.first_message as "firstMessage", sc.full_prompt as "fullPrompt",
+             sc.scheduled_at as "scheduledAt", sc.status, sc.retry_count as "retryCount",
+             sc.skipped_reason as "skippedReason", sc.created_at as "createdAt"
+      FROM scheduled_calls sc
+      JOIN campaigns c ON sc.campaign_id = c.id
+      WHERE sc.status = 'pending'
+        AND sc.scheduled_at <= NOW()
+        AND c.status = 'active'
+      ORDER BY c.priority DESC, sc.scheduled_at ASC
+      LIMIT 1
+    `
+    return result.length > 0 ? result[0] as ScheduledCall : null
+  } catch (error) {
+    console.error('[DB] Error getting next pending call:', error)
+    return null
+  }
+}
+
+export async function updateScheduledCall(id: string, updates: Partial<ScheduledCall>): Promise<ScheduledCall | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE scheduled_calls SET
+        status = COALESCE(${updates.status || null}, status),
+        retry_count = COALESCE(${updates.retryCount ?? null}, retry_count),
+        skipped_reason = COALESCE(${updates.skippedReason || null}, skipped_reason),
+        scheduled_at = COALESCE(${updates.scheduledAt || null}, scheduled_at)
+      WHERE id = ${id}
+      RETURNING id, campaign_id as "campaignId", client_id as "clientId", phone, name,
+                first_message as "firstMessage", full_prompt as "fullPrompt",
+                scheduled_at as "scheduledAt", status, retry_count as "retryCount",
+                skipped_reason as "skippedReason", created_at as "createdAt"
+    `
+    return result.length > 0 ? result[0] as ScheduledCall : null
+  } catch (error) {
+    console.error('[DB] Error updating scheduled call:', error)
+    return null
+  }
+}
+
+export async function getScheduledCallsByCampaign(campaignId: string): Promise<ScheduledCall[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId", phone, name,
+             first_message as "firstMessage", full_prompt as "fullPrompt",
+             scheduled_at as "scheduledAt", status, retry_count as "retryCount",
+             skipped_reason as "skippedReason", created_at as "createdAt"
+      FROM scheduled_calls
+      WHERE campaign_id = ${campaignId}
+      ORDER BY scheduled_at ASC
+    `
+    return result as ScheduledCall[]
+  } catch (error) {
+    console.error('[DB] Error getting scheduled calls:', error)
+    return []
+  }
+}
+
+export async function getUpcomingCalls(limit: number = 50): Promise<(ScheduledCall & { campaignName: string })[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT sc.id, sc.campaign_id as "campaignId", sc.client_id as "clientId", sc.phone, sc.name,
+             sc.first_message as "firstMessage", sc.full_prompt as "fullPrompt",
+             sc.scheduled_at as "scheduledAt", sc.status, sc.retry_count as "retryCount",
+             sc.skipped_reason as "skippedReason", sc.created_at as "createdAt",
+             c.name as "campaignName"
+      FROM scheduled_calls sc
+      JOIN campaigns c ON sc.campaign_id = c.id
+      WHERE sc.status = 'pending'
+      ORDER BY sc.scheduled_at ASC
+      LIMIT ${limit}
+    `
+    return result as (ScheduledCall & { campaignName: string })[]
+  } catch (error) {
+    console.error('[DB] Error getting upcoming calls:', error)
+    return []
+  }
+}
+
+export async function hasCallInProgress(): Promise<boolean> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT COUNT(*) as count FROM scheduled_calls WHERE status = 'in_progress'
+    `
+    return Number(result[0]?.count || 0) > 0
+  } catch (error) {
+    console.error('[DB] Error checking in progress calls:', error)
+    return false
+  }
+}
+
+// ============================================
+// CALL LOGS QUERIES
+// ============================================
+
+export async function createCallLog(log: Omit<CallLog, 'id' | 'createdAt'>): Promise<CallLog | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      INSERT INTO call_logs (campaign_id, client_id, scheduled_call_id, conversation_id,
+                            call_sid, direction, phone, duration, outcome, transcript,
+                            audio_url, notes, review_status, email_sent)
+      VALUES (${log.campaignId || null}, ${log.clientId || null}, ${log.scheduledCallId || null},
+              ${log.conversationId || null}, ${log.callSid || null}, ${log.direction},
+              ${log.phone}, ${log.duration || null}, ${log.outcome || null},
+              ${log.transcript ? JSON.stringify(log.transcript) : null}, ${log.audioUrl || null},
+              ${log.notes || null}, ${log.reviewStatus}, ${log.emailSent})
+      RETURNING id, campaign_id as "campaignId", client_id as "clientId",
+                scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+                call_sid as "callSid", direction, phone, duration, outcome, transcript,
+                audio_url as "audioUrl", notes, review_status as "reviewStatus",
+                email_sent as "emailSent", created_at as "createdAt"
+    `
+    return result[0] as CallLog
+  } catch (error) {
+    console.error('[DB] Error creating call log:', error)
+    return null
+  }
+}
+
+export async function getCallLogs(options: {
+  limit?: number
+  offset?: number
+  campaignId?: string
+  search?: string
+  outcome?: string
+  reviewStatus?: string
+}): Promise<{ logs: CallLog[], total: number }> {
+  try {
+    const db = getDb()
+    const limit = options.limit || 50
+    const offset = options.offset || 0
+
+    let whereClause = 'WHERE 1=1'
+    if (options.campaignId) whereClause += ` AND cl.campaign_id = '${options.campaignId}'`
+    if (options.outcome) whereClause += ` AND cl.outcome = '${options.outcome}'`
+    if (options.reviewStatus) whereClause += ` AND cl.review_status = '${options.reviewStatus}'`
+
+    // For search, we need parameterized query
+    const result = await db`
+      SELECT cl.id, cl.campaign_id as "campaignId", cl.client_id as "clientId",
+             cl.scheduled_call_id as "scheduledCallId", cl.conversation_id as "conversationId",
+             cl.call_sid as "callSid", cl.direction, cl.phone, cl.duration, cl.outcome,
+             cl.transcript, cl.audio_url as "audioUrl", cl.notes,
+             cl.review_status as "reviewStatus", cl.email_sent as "emailSent",
+             cl.created_at as "createdAt",
+             c.name as "clientName", camp.name as "campaignName"
+      FROM call_logs cl
+      LEFT JOIN clients c ON cl.client_id = c.id
+      LEFT JOIN campaigns camp ON cl.campaign_id = camp.id
+      WHERE (${options.campaignId || null}::uuid IS NULL OR cl.campaign_id = ${options.campaignId || null})
+        AND (${options.outcome || null} IS NULL OR cl.outcome = ${options.outcome || null})
+        AND (${options.reviewStatus || null} IS NULL OR cl.review_status = ${options.reviewStatus || null})
+        AND (${options.search || null} IS NULL OR
+             c.name ILIKE ${'%' + (options.search || '') + '%'} OR
+             cl.phone ILIKE ${'%' + (options.search || '') + '%'})
+      ORDER BY cl.created_at DESC
+      LIMIT ${limit} OFFSET ${offset}
+    `
+
+    const countResult = await db`
+      SELECT COUNT(*) as total
+      FROM call_logs cl
+      LEFT JOIN clients c ON cl.client_id = c.id
+      WHERE (${options.campaignId || null}::uuid IS NULL OR cl.campaign_id = ${options.campaignId || null})
+        AND (${options.outcome || null} IS NULL OR cl.outcome = ${options.outcome || null})
+        AND (${options.reviewStatus || null} IS NULL OR cl.review_status = ${options.reviewStatus || null})
+        AND (${options.search || null} IS NULL OR
+             c.name ILIKE ${'%' + (options.search || '') + '%'} OR
+             cl.phone ILIKE ${'%' + (options.search || '') + '%'})
+    `
+
+    return {
+      logs: result as CallLog[],
+      total: Number(countResult[0]?.total || 0)
+    }
+  } catch (error) {
+    console.error('[DB] Error getting call logs:', error)
+    return { logs: [], total: 0 }
+  }
+}
+
+export async function getCallLogById(id: string): Promise<CallLog | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId",
+             scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+             call_sid as "callSid", direction, phone, duration, outcome, transcript,
+             audio_url as "audioUrl", notes, review_status as "reviewStatus",
+             email_sent as "emailSent", created_at as "createdAt"
+      FROM call_logs WHERE id = ${id}
+    `
+    return result.length > 0 ? result[0] as CallLog : null
+  } catch (error) {
+    console.error('[DB] Error getting call log:', error)
+    return null
+  }
+}
+
+export async function updateCallLog(id: string, updates: Partial<CallLog>): Promise<CallLog | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE call_logs SET
+        transcript = COALESCE(${updates.transcript ? JSON.stringify(updates.transcript) : null}, transcript),
+        audio_url = COALESCE(${updates.audioUrl || null}, audio_url),
+        duration = COALESCE(${updates.duration ?? null}, duration),
+        outcome = COALESCE(${updates.outcome || null}, outcome),
+        notes = COALESCE(${updates.notes || null}, notes),
+        review_status = COALESCE(${updates.reviewStatus || null}, review_status),
+        email_sent = COALESCE(${updates.emailSent ?? null}, email_sent)
+      WHERE id = ${id}
+      RETURNING id, campaign_id as "campaignId", client_id as "clientId",
+                scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+                call_sid as "callSid", direction, phone, duration, outcome, transcript,
+                audio_url as "audioUrl", notes, review_status as "reviewStatus",
+                email_sent as "emailSent", created_at as "createdAt"
+    `
+    return result.length > 0 ? result[0] as CallLog : null
+  } catch (error) {
+    console.error('[DB] Error updating call log:', error)
+    return null
+  }
+}
+
+export async function getClientCallHistory(clientId: string): Promise<CallLog[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId",
+             scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+             call_sid as "callSid", direction, phone, duration, outcome, transcript,
+             audio_url as "audioUrl", notes, review_status as "reviewStatus",
+             email_sent as "emailSent", created_at as "createdAt"
+      FROM call_logs
+      WHERE client_id = ${clientId}
+      ORDER BY created_at DESC
+    `
+    return result as CallLog[]
+  } catch (error) {
+    console.error('[DB] Error getting client call history:', error)
+    return []
+  }
+}
+
+// ============================================
+// DNC (DO NOT CALL) QUERIES
+// ============================================
+
+export async function addToDnc(entry: Omit<DncEntry, 'id' | 'createdAt'>): Promise<DncEntry | null> {
+  try {
+    const db = getDb()
+    const normalizedPhone = entry.phone.replace(/[\s\-\(\)]/g, '')
+    const result = await db`
+      INSERT INTO dnc_list (phone, reason, added_by, campaign_id)
+      VALUES (${normalizedPhone}, ${entry.reason || null}, ${entry.addedBy}, ${entry.campaignId || null})
+      ON CONFLICT (phone, campaign_id) DO NOTHING
+      RETURNING id, phone, reason, added_by as "addedBy", campaign_id as "campaignId",
+                created_at as "createdAt"
+    `
+    return result.length > 0 ? result[0] as DncEntry : null
+  } catch (error) {
+    console.error('[DB] Error adding to DNC:', error)
+    return null
+  }
+}
+
+export async function isPhoneOnDnc(phone: string, campaignId?: string): Promise<boolean> {
+  try {
+    const db = getDb()
+    const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '')
+    const result = await db`
+      SELECT COUNT(*) as count FROM dnc_list
+      WHERE (phone = ${normalizedPhone}
+             OR phone = ${normalizedPhone.replace('+1', '')}
+             OR phone = ${'+1' + normalizedPhone.replace('+1', '')})
+        AND (campaign_id IS NULL OR campaign_id = ${campaignId || null})
+    `
+    return Number(result[0]?.count || 0) > 0
+  } catch (error) {
+    console.error('[DB] Error checking DNC:', error)
+    return false
+  }
+}
+
+export async function getDncList(options?: { campaignId?: string, search?: string }): Promise<DncEntry[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, phone, reason, added_by as "addedBy", campaign_id as "campaignId",
+             created_at as "createdAt"
+      FROM dnc_list
+      WHERE (${options?.campaignId || null}::uuid IS NULL OR campaign_id = ${options?.campaignId || null} OR campaign_id IS NULL)
+        AND (${options?.search || null} IS NULL OR phone ILIKE ${'%' + (options?.search || '') + '%'})
+      ORDER BY created_at DESC
+    `
+    return result as DncEntry[]
+  } catch (error) {
+    console.error('[DB] Error getting DNC list:', error)
+    return []
+  }
+}
+
+export async function removeFromDnc(phone: string, campaignId?: string): Promise<boolean> {
+  try {
+    const db = getDb()
+    const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '')
+    await db`
+      DELETE FROM dnc_list
+      WHERE (phone = ${normalizedPhone}
+             OR phone = ${normalizedPhone.replace('+1', '')}
+             OR phone = ${'+1' + normalizedPhone.replace('+1', '')})
+        AND (${campaignId || null}::uuid IS NULL OR campaign_id = ${campaignId || null})
+    `
+    return true
+  } catch (error) {
+    console.error('[DB] Error removing from DNC:', error)
+    return false
   }
 }
