@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Test ElevenLabs + Claude',
@@ -12,8 +13,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr">
-      <body style={{ fontFamily: 'system-ui', padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
-        {children}
+      <body className="bg-gray-900 text-gray-100 font-sans min-h-screen">
+        <div className="max-w-6xl mx-auto p-4">
+          {children}
+        </div>
       </body>
     </html>
   )
