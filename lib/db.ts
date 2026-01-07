@@ -920,3 +920,76 @@ export async function removeFromDnc(phone: string, campaignId?: string): Promise
     return false
   }
 }
+
+// ============================================
+// CLIENT HISTORY QUERIES
+// ============================================
+
+export async function getClientCallHistoryByPhone(campaignId: string, phone: string): Promise<{
+  clientName: string
+  phone: string
+  campaignName: string
+  scheduledCalls: Array<{
+    id: string
+    scheduledAt: string
+    status: string
+    retryCount: number
+    createdAt: string
+  }>
+  callLogs: CallLog[]
+} | null> {
+  try {
+    const db = getDb()
+
+    // Get campaign name
+    const campaigns = await db`
+      SELECT name FROM campaigns WHERE id = ${campaignId}
+    `
+    const campaignName = campaigns[0]?.name || 'Unknown Campaign'
+
+    // Get all scheduled calls for this phone in this campaign
+    const scheduledCalls = await db`
+      SELECT id, name, phone, scheduled_at as "scheduledAt", status,
+             retry_count as "retryCount", created_at as "createdAt"
+      FROM scheduled_calls
+      WHERE campaign_id = ${campaignId} AND phone = ${phone}
+      ORDER BY created_at DESC
+    `
+
+    if (scheduledCalls.length === 0) {
+      return null
+    }
+
+    const clientName = scheduledCalls[0].name || 'Unknown'
+    const scheduledCallIds = scheduledCalls.map((sc: any) => sc.id)
+
+    // Get all call logs for these scheduled calls
+    const callLogs = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId",
+             scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+             call_sid as "callSid", direction, phone, duration, outcome, transcript,
+             audio_url as "audioUrl", notes, review_status as "reviewStatus",
+             email_sent as "emailSent", created_at as "createdAt"
+      FROM call_logs
+      WHERE scheduled_call_id = ANY(${scheduledCallIds})
+      ORDER BY created_at DESC
+    `
+
+    return {
+      clientName,
+      phone,
+      campaignName,
+      scheduledCalls: scheduledCalls.map((sc: any) => ({
+        id: sc.id,
+        scheduledAt: sc.scheduledAt,
+        status: sc.status,
+        retryCount: sc.retryCount,
+        createdAt: sc.createdAt
+      })),
+      callLogs: callLogs as CallLog[]
+    }
+  } catch (error) {
+    console.error('[DB] Error getting client call history:', error)
+    return null
+  }
+}
