@@ -3,16 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-
-const DAYS_OF_WEEK = [
-  { id: 'monday', label: 'Monday' },
-  { id: 'tuesday', label: 'Tuesday' },
-  { id: 'wednesday', label: 'Wednesday' },
-  { id: 'thursday', label: 'Thursday' },
-  { id: 'friday', label: 'Friday' },
-  { id: 'saturday', label: 'Saturday' },
-  { id: 'sunday', label: 'Sunday' }
-]
+import { useLanguage } from '@/lib/language-context'
+import { t, getDaysOfWeek } from '@/lib/translations'
+import { LanguageSelector } from '@/components/LanguageSelector'
 
 interface ScheduledCall {
   id: string
@@ -62,6 +55,7 @@ export default function CampaignDetailPage() {
   const router = useRouter()
   const params = useParams()
   const campaignId = params.id as string
+  const { language } = useLanguage()
 
   // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false)
@@ -100,10 +94,10 @@ export default function CampaignDetailPage() {
       if (data.success) {
         setCampaign(data.campaign)
       } else {
-        setError(data.error || 'Failed to load campaign')
+        setError(data.error || t('errorLoadCampaign', language))
       }
     } catch (err) {
-      setError('Failed to load campaign')
+      setError(t('errorLoadCampaign', language))
     } finally {
       setLoading(false)
     }
@@ -132,13 +126,13 @@ export default function CampaignDetailPage() {
         setUploadResult(data.results)
         loadCampaign() // Refresh data
       } else {
-        setError(data.error || 'Failed to upload CSV')
+        setError(data.error || t('errorUploadCsv', language))
         if (data.errors) {
           setError(data.errors.join(', '))
         }
       }
     } catch (err) {
-      setError('Failed to upload CSV')
+      setError(t('errorUploadCsv', language))
     } finally {
       setUploading(false)
       if (fileInputRef.current) {
@@ -211,10 +205,10 @@ export default function CampaignDetailPage() {
           setEditForm({ ...editForm, fullPrompt: data.message })
         }
       } else {
-        setError(data.error || 'Failed to generate message')
+        setError(data.error || t('errorGenerateMessage', language))
       }
     } catch (err) {
-      setError('Failed to generate message')
+      setError(t('errorGenerateMessage', language))
     } finally {
       setGenerating(false)
     }
@@ -225,15 +219,15 @@ export default function CampaignDetailPage() {
     setError(null)
 
     if (!editForm.name.trim()) {
-      setError('Campaign name is required')
+      setError(t('errorCampaignName', language))
       return
     }
     if (editForm.callDays.length === 0) {
-      setError('Select at least one call day')
+      setError(t('errorCallDays', language))
       return
     }
     if (editForm.callStartHour >= editForm.callEndHour) {
-      setError('Start hour must be before end hour')
+      setError(t('errorCallHours', language))
       return
     }
 
@@ -263,19 +257,37 @@ export default function CampaignDetailPage() {
         setShowEditModal(false)
         loadCampaign()
       } else {
-        setError(data.error || 'Failed to update campaign')
+        setError(data.error || t('errorUpdateCampaign', language))
       }
     } catch (err) {
-      setError('Failed to update campaign')
+      setError(t('errorUpdateCampaign', language))
     } finally {
       setEditLoading(false)
     }
   }
 
+  const DAYS_OF_WEEK = getDaysOfWeek(language)
+
+  // Day labels for display
+  const dayLabels: Record<string, string> = {
+    monday: t('monday', language),
+    tuesday: t('tuesday', language),
+    wednesday: t('wednesday', language),
+    thursday: t('thursday', language),
+    friday: t('friday', language),
+    saturday: t('saturday', language),
+    sunday: t('sunday', language)
+  }
+
+  const formatCallDays = (days: string[]) => {
+    if (!days || days.length === 0) return language === 'fr' ? 'Aucun jour défini' : 'No days set'
+    return days.map(d => dayLabels[d] || d).join(', ')
+  }
+
   if (isAuthenticated === null || loading) {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+        <div className="text-xl">{t('loading', language)}</div>
       </div>
     )
   }
@@ -284,9 +296,9 @@ export default function CampaignDetailPage() {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
         <div className="text-center">
-          <div className="text-xl text-red-400 mb-4">{error || 'Campaign not found'}</div>
+          <div className="text-xl text-red-400 mb-4">{error || (language === 'fr' ? 'Campagne non trouvée' : 'Campaign not found')}</div>
           <Link href="/campaigns" className="text-blue-400 hover:underline">
-            Back to campaigns
+            {t('backToCampaigns', language)}
           </Link>
         </div>
       </div>
@@ -306,6 +318,21 @@ export default function CampaignDetailPage() {
     }
   }
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'active': return t('statusActive', language)
+      case 'paused': return t('statusPaused', language)
+      case 'completed': return t('statusCompleted', language)
+      case 'pending': return t('callPending', language)
+      case 'in_progress': return t('callInProgress', language)
+      case 'answered': return language === 'fr' ? 'Répondu' : 'Answered'
+      case 'failed': return t('callFailed', language)
+      case 'no_answer': return t('callNoAnswer', language)
+      case 'voicemail': return t('callVoicemail', language)
+      default: return status
+    }
+  }
+
   const getProgressPercent = () => {
     if (campaign.stats.totalContacts === 0) return 0
     return Math.round((campaign.stats.completed / campaign.stats.totalContacts) * 100)
@@ -319,7 +346,7 @@ export default function CampaignDetailPage() {
   }
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString('en-CA', {
+    return new Date(dateStr).toLocaleString(language === 'fr' ? 'fr-CA' : 'en-CA', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
@@ -335,43 +362,44 @@ export default function CampaignDetailPage() {
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold">{campaign.name}</h1>
             <span className={`px-3 py-1 rounded text-sm font-medium ${getStatusColor(campaign.status)}`}>
-              {campaign.status}
+              {getStatusLabel(campaign.status)}
             </span>
           </div>
           <p className="text-gray-400">
-            {campaign.creatorEmail} &bull; Priority: {campaign.priority}
+            {campaign.creatorEmail} &bull; {t('priority', language)}: {campaign.priority}
           </p>
           <p className="text-gray-500 text-sm mt-1">
-            {(campaign.callDays || []).join(', ') || 'No days set'} &bull; {campaign.callStartHour ?? 9}h-{campaign.callEndHour ?? 19}h ({campaign.timezone || 'America/Toronto'})
+            {formatCallDays(campaign.callDays)} &bull; {campaign.callStartHour ?? 9}h-{campaign.callEndHour ?? 19}h ({campaign.timezone || 'America/Toronto'})
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          <LanguageSelector />
           <button
             onClick={openEditModal}
             className="px-4 py-2 bg-purple-600 hover:bg-purple-500 rounded-lg transition"
           >
-            Edit Campaign
+            {t('editCampaign', language)}
           </button>
           {campaign.status === 'active' ? (
             <button
               onClick={() => handleStatusChange('paused')}
               className="px-4 py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg transition"
             >
-              Pause Campaign
+              {language === 'fr' ? 'Mettre en pause' : 'Pause Campaign'}
             </button>
           ) : campaign.status === 'paused' ? (
             <button
               onClick={() => handleStatusChange('active')}
               className="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg transition"
             >
-              Resume Campaign
+              {language === 'fr' ? 'Reprendre' : 'Resume Campaign'}
             </button>
           ) : null}
           <Link
             href="/campaigns"
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
           >
-            Back
+            {language === 'fr' ? 'Retour' : 'Back'}
           </Link>
         </div>
       </div>
@@ -387,30 +415,30 @@ export default function CampaignDetailPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-3xl font-bold">{campaign.stats.totalContacts}</div>
-          <div className="text-gray-400 text-sm">Total Contacts</div>
+          <div className="text-gray-400 text-sm">{language === 'fr' ? 'Total contacts' : 'Total Contacts'}</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-3xl font-bold text-yellow-400">{campaign.stats.pending}</div>
-          <div className="text-gray-400 text-sm">Pending</div>
+          <div className="text-gray-400 text-sm">{language === 'fr' ? 'En attente' : 'Pending'}</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-3xl font-bold text-green-400">{campaign.stats.answered}</div>
-          <div className="text-gray-400 text-sm">Answered</div>
+          <div className="text-gray-400 text-sm">{language === 'fr' ? 'Répondu' : 'Answered'}</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-3xl font-bold text-red-400">{campaign.stats.failed}</div>
-          <div className="text-gray-400 text-sm">Failed</div>
+          <div className="text-gray-400 text-sm">{language === 'fr' ? 'Échoué' : 'Failed'}</div>
         </div>
         <div className="bg-gray-800 rounded-lg p-4">
           <div className="text-3xl font-bold">{formatDuration(campaign.stats.avgDuration)}</div>
-          <div className="text-gray-400 text-sm">Avg Duration</div>
+          <div className="text-gray-400 text-sm">{language === 'fr' ? 'Durée moy.' : 'Avg Duration'}</div>
         </div>
       </div>
 
       {/* Progress bar */}
       <div className="bg-gray-800 rounded-lg p-4 mb-8">
         <div className="flex justify-between text-sm mb-2">
-          <span className="text-gray-400">Campaign Progress</span>
+          <span className="text-gray-400">{language === 'fr' ? 'Progression de la campagne' : 'Campaign Progress'}</span>
           <span className="text-gray-300">
             {campaign.stats.completed} / {campaign.stats.totalContacts} ({getProgressPercent()}%)
           </span>
@@ -425,9 +453,11 @@ export default function CampaignDetailPage() {
 
       {/* CSV Upload */}
       <div className="bg-gray-800 rounded-lg p-6 mb-8">
-        <h2 className="text-xl font-semibold mb-4">Upload Contacts</h2>
+        <h2 className="text-xl font-semibold mb-4">{language === 'fr' ? 'Importer des contacts' : 'Upload Contacts'}</h2>
         <p className="text-gray-400 text-sm mb-4">
-          Upload a CSV file with columns: phone (required), name (optional), subject (optional)
+          {language === 'fr'
+            ? 'Importez un fichier CSV avec les colonnes : phone (requis), name (optionnel), subject (optionnel)'
+            : 'Upload a CSV file with columns: phone (required), name (optional), subject (optional)'}
         </p>
 
         <div className="flex items-center gap-4">
@@ -448,32 +478,36 @@ export default function CampaignDetailPage() {
                 : 'bg-blue-600 hover:bg-blue-500'
             }`}
           >
-            {uploading ? 'Uploading...' : 'Choose CSV File'}
+            {uploading
+              ? (language === 'fr' ? 'Importation...' : 'Uploading...')
+              : (language === 'fr' ? 'Choisir un fichier CSV' : 'Choose CSV File')}
           </label>
           {campaign.status !== 'active' && (
-            <span className="text-yellow-400 text-sm">Campaign must be active to upload</span>
+            <span className="text-yellow-400 text-sm">
+              {language === 'fr' ? 'La campagne doit être active pour importer' : 'Campaign must be active to upload'}
+            </span>
           )}
         </div>
 
         {/* Upload result */}
         {uploadResult && (
           <div className="mt-4 p-4 bg-gray-700 rounded-lg">
-            <h3 className="font-medium mb-2">Upload Result</h3>
+            <h3 className="font-medium mb-2">{language === 'fr' ? 'Résultat de l\'importation' : 'Upload Result'}</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
-                <span className="text-gray-400">Total in CSV:</span>
+                <span className="text-gray-400">{language === 'fr' ? 'Total dans le CSV' : 'Total in CSV'}:</span>
                 <span className="ml-2">{uploadResult.totalInCsv}</span>
               </div>
               <div>
-                <span className="text-gray-400">Added:</span>
+                <span className="text-gray-400">{language === 'fr' ? 'Ajoutés' : 'Added'}:</span>
                 <span className="ml-2 text-green-400">{uploadResult.added}</span>
               </div>
               <div>
-                <span className="text-gray-400">Skipped (DNC):</span>
+                <span className="text-gray-400">{language === 'fr' ? 'Ignorés (DNC)' : 'Skipped (DNC)'}:</span>
                 <span className="ml-2 text-yellow-400">{uploadResult.dncSkipped}</span>
               </div>
               <div>
-                <span className="text-gray-400">Duplicates:</span>
+                <span className="text-gray-400">{language === 'fr' ? 'Doublons' : 'Duplicates'}:</span>
                 <span className="ml-2 text-gray-400">{uploadResult.duplicateInCampaign + uploadResult.duplicatesInCsv}</span>
               </div>
             </div>
@@ -484,32 +518,34 @@ export default function CampaignDetailPage() {
       {/* Scheduled Calls */}
       <div className="bg-gray-800 rounded-lg p-6">
         <h2 className="text-xl font-semibold mb-4">
-          Scheduled Calls ({campaign.scheduledCalls.length})
+          {language === 'fr' ? 'Appels programmés' : 'Scheduled Calls'} ({campaign.scheduledCalls.length})
         </h2>
 
         {campaign.scheduledCalls.length === 0 ? (
-          <p className="text-gray-400 text-center py-8">No contacts yet. Upload a CSV to get started.</p>
+          <p className="text-gray-400 text-center py-8">
+            {language === 'fr' ? 'Aucun contact pour le moment. Importez un CSV pour commencer.' : 'No contacts yet. Upload a CSV to get started.'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-700">
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Name</th>
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Phone</th>
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Scheduled</th>
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Status</th>
-                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Retries</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('name', language)}</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('phone', language)}</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Prévu' : 'Scheduled'}</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('status', language)}</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Tentatives' : 'Retries'}</th>
                 </tr>
               </thead>
               <tbody>
                 {campaign.scheduledCalls.slice(0, 50).map((call) => (
                   <tr key={call.id} className="border-b border-gray-700/50 hover:bg-gray-700/30">
-                    <td className="py-3 px-4">{call.name || 'Unknown'}</td>
+                    <td className="py-3 px-4">{call.name || (language === 'fr' ? 'Inconnu' : 'Unknown')}</td>
                     <td className="py-3 px-4 font-mono text-sm">{call.phone}</td>
                     <td className="py-3 px-4 text-sm">{formatDate(call.scheduledAt)}</td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-1 rounded text-xs ${getStatusColor(call.status)}`}>
-                        {call.status}
+                        {getStatusLabel(call.status)}
                       </span>
                     </td>
                     <td className="py-3 px-4 text-sm">{call.retryCount}</td>
@@ -519,7 +555,9 @@ export default function CampaignDetailPage() {
             </table>
             {campaign.scheduledCalls.length > 50 && (
               <p className="text-gray-400 text-sm text-center py-4">
-                Showing first 50 of {campaign.scheduledCalls.length} contacts
+                {language === 'fr'
+                  ? `Affichage des 50 premiers sur ${campaign.scheduledCalls.length} contacts`
+                  : `Showing first 50 of ${campaign.scheduledCalls.length} contacts`}
               </p>
             )}
           </div>
@@ -532,7 +570,7 @@ export default function CampaignDetailPage() {
           <div className="bg-gray-800 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="p-6">
               <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">Edit Campaign</h2>
+                <h2 className="text-2xl font-bold">{t('editCampaign', language)}</h2>
                 <button
                   onClick={() => setShowEditModal(false)}
                   className="text-gray-400 hover:text-white text-2xl"
@@ -544,7 +582,7 @@ export default function CampaignDetailPage() {
               <form onSubmit={handleEditSubmit} className="space-y-6">
                 {/* Campaign Name */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Campaign Name *</label>
+                  <label className="block text-sm font-medium mb-2">{t('campaignName', language)} *</label>
                   <input
                     type="text"
                     value={editForm.name}
@@ -555,17 +593,17 @@ export default function CampaignDetailPage() {
 
                 {/* First Message */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">First Message (Agent&apos;s greeting)</label>
+                  <label className="block text-sm font-medium mb-2">{t('firstMessage', language)} ({t('firstMessageDesc', language)})</label>
                   <textarea
                     value={editForm.firstMessage}
                     onChange={(e) => setEditForm({ ...editForm, firstMessage: e.target.value })}
-                    placeholder="The message the agent will say first..."
+                    placeholder={t('firstMessagePlaceholder', language)}
                     rows={3}
                     className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
                   />
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-gray-400 text-sm">
-                      Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
+                      {t('variables', language)}: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
                     </p>
                     <button
                       type="button"
@@ -576,12 +614,12 @@ export default function CampaignDetailPage() {
                       {generatingFirstMessage ? (
                         <>
                           <span className="animate-spin">&#9696;</span>
-                          Generating...
+                          {t('generating', language)}
                         </>
                       ) : (
                         <>
                           <span>&#10024;</span>
-                          Generate with Gemini
+                          {t('generateWithGemini', language)}
                         </>
                       )}
                     </button>
@@ -590,17 +628,17 @@ export default function CampaignDetailPage() {
 
                 {/* Full Prompt */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Full Prompt (Agent&apos;s system instructions)</label>
+                  <label className="block text-sm font-medium mb-2">{t('fullPrompt', language)} ({t('fullPromptDesc', language)})</label>
                   <textarea
                     value={editForm.fullPrompt}
                     onChange={(e) => setEditForm({ ...editForm, fullPrompt: e.target.value })}
-                    placeholder="The system prompt that defines how the agent behaves..."
+                    placeholder={t('fullPromptPlaceholder', language)}
                     rows={6}
                     className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-sm"
                   />
                   <div className="flex items-center justify-between mt-2">
                     <p className="text-gray-400 text-sm">
-                      Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
+                      {t('variables', language)}: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
                     </p>
                     <button
                       type="button"
@@ -611,12 +649,12 @@ export default function CampaignDetailPage() {
                       {generatingFullPrompt ? (
                         <>
                           <span className="animate-spin">&#9696;</span>
-                          Generating...
+                          {t('generating', language)}
                         </>
                       ) : (
                         <>
                           <span>&#10024;</span>
-                          Generate with Gemini
+                          {t('generateWithGemini', language)}
                         </>
                       )}
                     </button>
@@ -625,7 +663,7 @@ export default function CampaignDetailPage() {
 
                 {/* Call Days */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Call Days *</label>
+                  <label className="block text-sm font-medium mb-2">{t('callDays', language)} *</label>
                   <div className="flex flex-wrap gap-2">
                     {DAYS_OF_WEEK.map((day) => (
                       <button
@@ -647,7 +685,7 @@ export default function CampaignDetailPage() {
                 {/* Call Hours */}
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Start Hour</label>
+                    <label className="block text-sm font-medium mb-2">{t('startHour', language)}</label>
                     <select
                       value={editForm.callStartHour}
                       onChange={(e) => setEditForm({ ...editForm, callStartHour: parseInt(e.target.value) })}
@@ -659,7 +697,7 @@ export default function CampaignDetailPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">End Hour</label>
+                    <label className="block text-sm font-medium mb-2">{t('endHour', language)}</label>
                     <select
                       value={editForm.callEndHour}
                       onChange={(e) => setEditForm({ ...editForm, callEndHour: parseInt(e.target.value) })}
@@ -674,7 +712,7 @@ export default function CampaignDetailPage() {
 
                 {/* Priority */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Priority (1-10)</label>
+                  <label className="block text-sm font-medium mb-2">{t('priority', language)} (1-10)</label>
                   <input
                     type="number"
                     min={1}
@@ -687,26 +725,26 @@ export default function CampaignDetailPage() {
 
                 {/* Voicemail Action */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Voicemail Action</label>
+                  <label className="block text-sm font-medium mb-2">{t('voicemailAction', language)}</label>
                   <select
                     value={editForm.voicemailAction}
                     onChange={(e) => setEditForm({ ...editForm, voicemailAction: e.target.value as 'hangup' | 'leave_message' | 'retry' })}
                     className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
                   >
-                    <option value="hangup">Hang up (schedule retry later)</option>
-                    <option value="leave_message">Leave voicemail message</option>
-                    <option value="retry">Retry (max 2 voicemail retries)</option>
+                    <option value="hangup">{t('voicemailHangup', language)}</option>
+                    <option value="leave_message">{t('voicemailLeaveMessage', language)}</option>
+                    <option value="retry">{t('voicemailRetry', language)}</option>
                   </select>
                 </div>
 
                 {/* Voicemail Message (conditional) */}
                 {editForm.voicemailAction === 'leave_message' && (
                   <div>
-                    <label className="block text-sm font-medium mb-2">Voicemail Message</label>
+                    <label className="block text-sm font-medium mb-2">{t('voicemailMessage', language)}</label>
                     <textarea
                       value={editForm.voicemailMessage}
                       onChange={(e) => setEditForm({ ...editForm, voicemailMessage: e.target.value })}
-                      placeholder="Enter the message to leave on voicemail..."
+                      placeholder={t('voicemailMessagePlaceholder', language)}
                       rows={3}
                       className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
                     />
@@ -715,11 +753,11 @@ export default function CampaignDetailPage() {
 
                 {/* Recording Disclosure */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Recording Disclosure</label>
+                  <label className="block text-sm font-medium mb-2">{t('recordingDisclosure', language)}</label>
                   <textarea
                     value={editForm.recordingDisclosure}
                     onChange={(e) => setEditForm({ ...editForm, recordingDisclosure: e.target.value })}
-                    placeholder="This will be said at the beginning of each call..."
+                    placeholder={t('recordingDisclosurePlaceholder', language)}
                     rows={2}
                     className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
                   />
@@ -732,14 +770,14 @@ export default function CampaignDetailPage() {
                     disabled={editLoading}
                     className="px-6 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed rounded-lg font-medium transition"
                   >
-                    {editLoading ? 'Saving...' : 'Save Changes'}
+                    {editLoading ? t('saving', language) : t('save', language)}
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowEditModal(false)}
                     className="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition"
                   >
-                    Cancel
+                    {t('cancel', language)}
                   </button>
                 </div>
               </form>

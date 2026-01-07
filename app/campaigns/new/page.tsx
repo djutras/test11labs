@@ -3,16 +3,9 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-
-const DAYS_OF_WEEK = [
-  { id: 'monday', label: 'Monday' },
-  { id: 'tuesday', label: 'Tuesday' },
-  { id: 'wednesday', label: 'Wednesday' },
-  { id: 'thursday', label: 'Thursday' },
-  { id: 'friday', label: 'Friday' },
-  { id: 'saturday', label: 'Saturday' },
-  { id: 'sunday', label: 'Sunday' }
-]
+import { useLanguage } from '@/lib/language-context'
+import { t, getDaysOfWeek } from '@/lib/translations'
+import { LanguageSelector } from '@/components/LanguageSelector'
 
 const DEFAULT_FIRST_MESSAGE = "Bonjour {{name}}! Ici Nicolas de Compta I A. Comment puis-je vous aider aujourd'hui?"
 
@@ -31,6 +24,7 @@ export default function NewCampaignPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const { language } = useLanguage()
 
   // Form state
   const [name, setName] = useState('')
@@ -83,10 +77,10 @@ export default function NewCampaignPage() {
       if (data.success && data.message) {
         setMessage(data.message)
       } else {
-        setError(data.error || 'Failed to generate message')
+        setError(data.error || t('errorGenerateMessage', language))
       }
     } catch (err) {
-      setError('Failed to generate message')
+      setError(t('errorGenerateMessage', language))
     } finally {
       setGenerating(false)
     }
@@ -98,19 +92,19 @@ export default function NewCampaignPage() {
 
     // Validation
     if (!name.trim()) {
-      setError('Campaign name is required')
+      setError(t('errorCampaignName', language))
       return
     }
     if (!creatorEmail.trim()) {
-      setError('Creator email is required')
+      setError(t('errorCreatorEmail', language))
       return
     }
     if (callDays.length === 0) {
-      setError('Select at least one call day')
+      setError(t('errorCallDays', language))
       return
     }
     if (callStartHour >= callEndHour) {
-      setError('Start hour must be before end hour')
+      setError(t('errorCallHours', language))
       return
     }
 
@@ -141,10 +135,10 @@ export default function NewCampaignPage() {
       if (data.success) {
         router.push(`/campaigns/${data.campaign.id}`)
       } else {
-        setError(data.error || 'Failed to create campaign')
+        setError(data.error || t('errorCreateCampaign', language))
       }
     } catch (err) {
-      setError('Failed to create campaign')
+      setError(t('errorCreateCampaign', language))
     } finally {
       setLoading(false)
     }
@@ -153,25 +147,30 @@ export default function NewCampaignPage() {
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+        <div className="text-xl">{t('loading', language)}</div>
       </div>
     )
   }
+
+  const DAYS_OF_WEEK = getDaysOfWeek(language)
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-6">
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Create Campaign</h1>
-          <p className="text-gray-400 mt-1">Set up a new call campaign</p>
+          <h1 className="text-3xl font-bold">{t('createCampaignTitle', language)}</h1>
+          <p className="text-gray-400 mt-1">{t('createCampaignSubtitle', language)}</p>
         </div>
-        <Link
-          href="/campaigns"
-          className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
-        >
-          Back to Campaigns
-        </Link>
+        <div className="flex gap-4 items-center">
+          <LanguageSelector />
+          <Link
+            href="/campaigns"
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
+          >
+            {t('backToCampaigns', language)}
+          </Link>
+        </div>
       </div>
 
       {/* Error message */}
@@ -186,19 +185,19 @@ export default function NewCampaignPage() {
         <div className="bg-gray-800 rounded-lg p-6 space-y-6">
           {/* Campaign Name */}
           <div>
-            <label className="block text-sm font-medium mb-2">Campaign Name *</label>
+            <label className="block text-sm font-medium mb-2">{t('campaignName', language)} *</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., January Client Outreach"
+              placeholder={t('campaignNamePlaceholder', language)}
               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
             />
           </div>
 
           {/* Creator Email */}
           <div>
-            <label className="block text-sm font-medium mb-2">Creator Email * (receives notifications)</label>
+            <label className="block text-sm font-medium mb-2">{t('creatorEmail', language)} * ({t('creatorEmailDesc', language)})</label>
             <input
               type="email"
               value={creatorEmail}
@@ -210,17 +209,17 @@ export default function NewCampaignPage() {
 
           {/* First Message */}
           <div>
-            <label className="block text-sm font-medium mb-2">First Message (Agent&apos;s greeting)</label>
+            <label className="block text-sm font-medium mb-2">{t('firstMessage', language)} ({t('firstMessageDesc', language)})</label>
             <textarea
               value={firstMessage}
               onChange={(e) => setFirstMessage(e.target.value)}
-              placeholder="The message the agent will say first..."
+              placeholder={t('firstMessagePlaceholder', language)}
               rows={3}
               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
             />
             <div className="flex items-center justify-between mt-2">
               <p className="text-gray-400 text-sm">
-                Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
+                {t('variables', language)}: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
               </p>
               <button
                 type="button"
@@ -231,12 +230,12 @@ export default function NewCampaignPage() {
                 {generatingFirstMessage ? (
                   <>
                     <span className="animate-spin">&#9696;</span>
-                    Generating...
+                    {t('generating', language)}
                   </>
                 ) : (
                   <>
                     <span>&#10024;</span>
-                    Generate with Gemini
+                    {t('generateWithGemini', language)}
                   </>
                 )}
               </button>
@@ -245,17 +244,17 @@ export default function NewCampaignPage() {
 
           {/* Full Prompt */}
           <div>
-            <label className="block text-sm font-medium mb-2">Full Prompt (Agent&apos;s system instructions)</label>
+            <label className="block text-sm font-medium mb-2">{t('fullPrompt', language)} ({t('fullPromptDesc', language)})</label>
             <textarea
               value={fullPrompt}
               onChange={(e) => setFullPrompt(e.target.value)}
-              placeholder="The system prompt that defines how the agent behaves..."
+              placeholder={t('fullPromptPlaceholder', language)}
               rows={8}
               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500 font-mono text-sm"
             />
             <div className="flex items-center justify-between mt-2">
               <p className="text-gray-400 text-sm">
-                Variables: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
+                {t('variables', language)}: <code className="bg-gray-700 px-1 rounded">{'{{name}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{phone}}'}</code>, <code className="bg-gray-700 px-1 rounded">{'{{subject}}'}</code>
               </p>
               <button
                 type="button"
@@ -266,12 +265,12 @@ export default function NewCampaignPage() {
                 {generatingFullPrompt ? (
                   <>
                     <span className="animate-spin">&#9696;</span>
-                    Generating...
+                    {t('generating', language)}
                   </>
                 ) : (
                   <>
                     <span>&#10024;</span>
-                    Generate with Gemini
+                    {t('generateWithGemini', language)}
                   </>
                 )}
               </button>
@@ -280,7 +279,7 @@ export default function NewCampaignPage() {
 
           {/* Call Days */}
           <div>
-            <label className="block text-sm font-medium mb-2">Call Days *</label>
+            <label className="block text-sm font-medium mb-2">{t('callDays', language)} *</label>
             <div className="flex flex-wrap gap-2">
               {DAYS_OF_WEEK.map((day) => (
                 <button
@@ -302,7 +301,7 @@ export default function NewCampaignPage() {
           {/* Call Hours */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-2">Start Hour</label>
+              <label className="block text-sm font-medium mb-2">{t('startHour', language)}</label>
               <select
                 value={callStartHour}
                 onChange={(e) => setCallStartHour(parseInt(e.target.value))}
@@ -314,7 +313,7 @@ export default function NewCampaignPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium mb-2">End Hour</label>
+              <label className="block text-sm font-medium mb-2">{t('endHour', language)}</label>
               <select
                 value={callEndHour}
                 onChange={(e) => setCallEndHour(parseInt(e.target.value))}
@@ -326,11 +325,11 @@ export default function NewCampaignPage() {
               </select>
             </div>
           </div>
-          <p className="text-gray-400 text-sm -mt-4">Timezone: America/Toronto (EST/EDT)</p>
+          <p className="text-gray-400 text-sm -mt-4">{t('timezone', language)}: America/Toronto (EST/EDT)</p>
 
           {/* Priority */}
           <div>
-            <label className="block text-sm font-medium mb-2">Priority (1-10)</label>
+            <label className="block text-sm font-medium mb-2">{t('priority', language)} (1-10)</label>
             <input
               type="number"
               min={1}
@@ -339,31 +338,31 @@ export default function NewCampaignPage() {
               onChange={(e) => setPriority(parseInt(e.target.value) || 1)}
               className="w-32 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
             />
-            <p className="text-gray-400 text-sm mt-1">Higher priority campaigns call first</p>
+            <p className="text-gray-400 text-sm mt-1">{t('priorityDesc', language)}</p>
           </div>
 
           {/* Voicemail Action */}
           <div>
-            <label className="block text-sm font-medium mb-2">Voicemail Action</label>
+            <label className="block text-sm font-medium mb-2">{t('voicemailAction', language)}</label>
             <select
               value={voicemailAction}
               onChange={(e) => setVoicemailAction(e.target.value as 'hangup' | 'leave_message' | 'retry')}
               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
             >
-              <option value="hangup">Hang up (schedule retry later)</option>
-              <option value="leave_message">Leave voicemail message</option>
-              <option value="retry">Retry (max 2 voicemail retries)</option>
+              <option value="hangup">{t('voicemailHangup', language)}</option>
+              <option value="leave_message">{t('voicemailLeaveMessage', language)}</option>
+              <option value="retry">{t('voicemailRetry', language)}</option>
             </select>
           </div>
 
           {/* Voicemail Message (conditional) */}
           {voicemailAction === 'leave_message' && (
             <div>
-              <label className="block text-sm font-medium mb-2">Voicemail Message</label>
+              <label className="block text-sm font-medium mb-2">{t('voicemailMessage', language)}</label>
               <textarea
                 value={voicemailMessage}
                 onChange={(e) => setVoicemailMessage(e.target.value)}
-                placeholder="Enter the message to leave on voicemail..."
+                placeholder={t('voicemailMessagePlaceholder', language)}
                 rows={3}
                 className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
               />
@@ -372,15 +371,15 @@ export default function NewCampaignPage() {
 
           {/* Recording Disclosure */}
           <div>
-            <label className="block text-sm font-medium mb-2">Recording Disclosure</label>
+            <label className="block text-sm font-medium mb-2">{t('recordingDisclosure', language)}</label>
             <textarea
               value={recordingDisclosure}
               onChange={(e) => setRecordingDisclosure(e.target.value)}
-              placeholder="This will be said at the beginning of each call..."
+              placeholder={t('recordingDisclosurePlaceholder', language)}
               rows={2}
               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
             />
-            <p className="text-gray-400 text-sm mt-1">This message is prepended to the first message of each call</p>
+            <p className="text-gray-400 text-sm mt-1">{t('recordingDisclosureDesc', language)}</p>
           </div>
         </div>
 
@@ -391,13 +390,13 @@ export default function NewCampaignPage() {
             disabled={loading}
             className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed rounded-lg font-medium transition"
           >
-            {loading ? 'Creating...' : 'Create Campaign'}
+            {loading ? t('creating', language) : t('createCampaign', language)}
           </button>
           <Link
             href="/campaigns"
             className="px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition"
           >
-            Cancel
+            {t('cancel', language)}
           </Link>
         </div>
       </form>
