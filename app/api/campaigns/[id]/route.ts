@@ -131,6 +131,8 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     if (body.voicemailAction) updates.voicemailAction = body.voicemailAction
     if (body.voicemailMessage !== undefined) updates.voicemailMessage = body.voicemailMessage
     if (body.recordingDisclosure) updates.recordingDisclosure = body.recordingDisclosure
+    if (body.firstMessage !== undefined) updates.firstMessage = body.firstMessage
+    if (body.fullPrompt !== undefined) updates.fullPrompt = body.fullPrompt
     if (body.status) updates.status = body.status
 
     const campaign = await updateCampaign(id, updates)

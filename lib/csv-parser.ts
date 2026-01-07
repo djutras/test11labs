@@ -1,11 +1,10 @@
 // lib/csv-parser.ts
 // CSV parsing utility for campaign contact uploads
+// Note: first_message and full_prompt are now at the campaign level, not per-contact
 
 export interface CsvContact {
   phone: string
   name?: string
-  firstMessage?: string
-  fullPrompt?: string
 }
 
 export interface ParseResult {
@@ -18,8 +17,7 @@ export interface ParseResult {
 
 /**
  * Parse CSV content into contacts
- * Expected columns: phone, name, first_message, full_prompt
- * Only phone is required
+ * Expected columns: phone (required), name (optional)
  */
 export function parseCsv(csvContent: string): ParseResult {
   const result: ParseResult = {
@@ -52,12 +50,6 @@ export function parseCsv(csvContent: string): ParseResult {
   )
   const nameIndex = headers.findIndex(h =>
     h === 'name' || h === 'nom' || h === 'client' || h === 'client_name' || h === 'clientname'
-  )
-  const firstMessageIndex = headers.findIndex(h =>
-    h === 'first_message' || h === 'firstmessage' || h === 'message' || h === 'premier_message'
-  )
-  const fullPromptIndex = headers.findIndex(h =>
-    h === 'full_prompt' || h === 'fullprompt' || h === 'prompt' || h === 'system_prompt'
   )
 
   if (phoneIndex === -1) {
@@ -102,9 +94,7 @@ export function parseCsv(csvContent: string): ParseResult {
       // Build contact object
       const contact: CsvContact = {
         phone,
-        name: nameIndex >= 0 ? values[nameIndex]?.trim() || undefined : undefined,
-        firstMessage: firstMessageIndex >= 0 ? values[firstMessageIndex]?.trim() || undefined : undefined,
-        fullPrompt: fullPromptIndex >= 0 ? values[fullPromptIndex]?.trim() || undefined : undefined
+        name: nameIndex >= 0 ? values[nameIndex]?.trim() || undefined : undefined
       }
 
       result.contacts.push(contact)
@@ -199,8 +189,8 @@ function normalizePhone(phone: string): string | null {
  * Generate a sample CSV template
  */
 export function generateCsvTemplate(): string {
-  return `phone,name,first_message,full_prompt
-+15145551234,John Smith,"Hello John, this is a call from Compta IA.","You are calling John Smith, a small business owner interested in accounting services."
-+15145555678,Marie Tremblay,"Bonjour Marie, ici Compta IA.","Vous appelez Marie Tremblay, propriétaire d'un salon de coiffure."
-5145559012,Pierre Dubois,"Bonjour Pierre!","Pierre Dubois est un nouveau prospect intéressé par nos services."`
+  return `phone,name
++15145551234,John Smith
++15145555678,Marie Tremblay
+5145559012,Pierre Dubois`
 }

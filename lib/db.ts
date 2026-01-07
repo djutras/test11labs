@@ -45,6 +45,8 @@ export interface Campaign {
   voicemailAction: 'hangup' | 'leave_message' | 'retry'
   voicemailMessage?: string
   recordingDisclosure: string
+  firstMessage?: string
+  fullPrompt?: string
   status: 'active' | 'paused' | 'completed'
   createdAt: string
   updatedAt: string
@@ -132,6 +134,8 @@ export async function initializeDatabase() {
         voicemail_action VARCHAR(20) DEFAULT 'hangup',
         voicemail_message TEXT,
         recording_disclosure TEXT DEFAULT 'This call may be recorded for quality purposes.',
+        first_message TEXT,
+        full_prompt TEXT,
         status VARCHAR(20) DEFAULT 'active',
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -230,6 +234,12 @@ export async function initializeDatabase() {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'status') THEN
           ALTER TABLE campaigns ADD COLUMN status VARCHAR(20) DEFAULT 'active';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'first_message') THEN
+          ALTER TABLE campaigns ADD COLUMN first_message TEXT;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'full_prompt') THEN
+          ALTER TABLE campaigns ADD COLUMN full_prompt TEXT;
         END IF;
         -- Make slug column nullable if it exists (legacy column)
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'slug') THEN
@@ -340,15 +350,17 @@ export async function createCampaign(campaign: Omit<Campaign, 'id' | 'createdAt'
   const result = await db`
     INSERT INTO campaigns (name, creator_email, call_days, call_start_hour, call_end_hour,
                           timezone, priority, voicemail_action, voicemail_message,
-                          recording_disclosure, status)
+                          recording_disclosure, first_message, full_prompt, status)
     VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.callDays},
             ${campaign.callStartHour}, ${campaign.callEndHour}, ${campaign.timezone},
             ${campaign.priority}, ${campaign.voicemailAction}, ${campaign.voicemailMessage || null},
-            ${campaign.recordingDisclosure}, ${campaign.status})
+            ${campaign.recordingDisclosure}, ${campaign.firstMessage || null}, ${campaign.fullPrompt || null},
+            ${campaign.status})
     RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
               call_start_hour as "callStartHour", call_end_hour as "callEndHour",
               timezone, priority, voicemail_action as "voicemailAction",
               voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+              first_message as "firstMessage", full_prompt as "fullPrompt",
               status, created_at as "createdAt", updated_at as "updatedAt"
   `
   return result[0] as Campaign
@@ -362,6 +374,7 @@ export async function getCampaigns(): Promise<Campaign[]> {
              call_start_hour as "callStartHour", call_end_hour as "callEndHour",
              timezone, priority, voicemail_action as "voicemailAction",
              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+             first_message as "firstMessage", full_prompt as "fullPrompt",
              status, created_at as "createdAt", updated_at as "updatedAt"
       FROM campaigns
       ORDER BY created_at DESC
@@ -381,6 +394,7 @@ export async function getCampaignById(id: string): Promise<Campaign | null> {
              call_start_hour as "callStartHour", call_end_hour as "callEndHour",
              timezone, priority, voicemail_action as "voicemailAction",
              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+             first_message as "firstMessage", full_prompt as "fullPrompt",
              status, created_at as "createdAt", updated_at as "updatedAt"
       FROM campaigns WHERE id = ${id}
     `
@@ -404,6 +418,8 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>): Pr
         voicemail_action = COALESCE(${updates.voicemailAction || null}, voicemail_action),
         voicemail_message = COALESCE(${updates.voicemailMessage || null}, voicemail_message),
         recording_disclosure = COALESCE(${updates.recordingDisclosure || null}, recording_disclosure),
+        first_message = COALESCE(${updates.firstMessage || null}, first_message),
+        full_prompt = COALESCE(${updates.fullPrompt || null}, full_prompt),
         status = COALESCE(${updates.status || null}, status),
         updated_at = NOW()
       WHERE id = ${id}
@@ -411,6 +427,7 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>): Pr
                 call_start_hour as "callStartHour", call_end_hour as "callEndHour",
                 timezone, priority, voicemail_action as "voicemailAction",
                 voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+                first_message as "firstMessage", full_prompt as "fullPrompt",
                 status, created_at as "createdAt", updated_at as "updatedAt"
     `
     return result.length > 0 ? result[0] as Campaign : null

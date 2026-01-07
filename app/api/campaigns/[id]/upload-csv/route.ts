@@ -11,6 +11,7 @@ import {
 } from '@/lib/db'
 import { parseCsv, type CsvContact } from '@/lib/csv-parser'
 import { calculateScheduledTimes } from '@/lib/scheduler'
+import { replaceVariables } from '@/lib/variable-replacer'
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -157,14 +158,15 @@ export async function POST(request: Request, { params }: RouteParams) {
           continue
         }
 
-        // Create scheduled call
+        // Create scheduled call with campaign messages (variables replaced with contact data)
+        const contactData = { name: contact.name, phone: contact.phone }
         const scheduledCall = await createScheduledCall({
           campaignId,
           clientId: client.id,
           phone: contact.phone,
           name: contact.name,
-          firstMessage: contact.firstMessage,
-          fullPrompt: contact.fullPrompt,
+          firstMessage: replaceVariables(campaign.firstMessage, contactData) || null,
+          fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || null,
           scheduledAt: scheduledAt.toISOString(),
           status: 'pending',
           retryCount: 0
