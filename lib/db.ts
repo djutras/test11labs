@@ -77,7 +77,7 @@ export interface CallLog {
   direction: 'outbound' | 'inbound'
   phone: string
   duration?: number
-  outcome?: 'answered' | 'voicemail' | 'no_answer' | 'busy' | 'invalid' | 'failed'
+  outcome?: 'pending' | 'answered' | 'voicemail' | 'no_answer' | 'busy' | 'invalid' | 'failed'
   transcript?: Record<string, unknown>
   audioUrl?: string
   notes?: string
