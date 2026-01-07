@@ -46,7 +46,7 @@ export default function ClientHistoryPage() {
 
   // Check authentication
   useEffect(() => {
-    const authStatus = localStorage.getItem('isAuthenticated')
+    const authStatus = localStorage.getItem('authenticated')
     if (authStatus !== 'true') {
       router.push('/login')
     } else {
