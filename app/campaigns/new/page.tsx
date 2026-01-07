@@ -35,7 +35,7 @@ export default function NewCampaignPage() {
   const [priority, setPriority] = useState(1)
   const [voicemailAction, setVoicemailAction] = useState<'hangup' | 'leave_message' | 'retry'>('hangup')
   const [voicemailMessage, setVoicemailMessage] = useState('')
-  const [recordingDisclosure, setRecordingDisclosure] = useState('This call may be recorded for quality purposes.')
+  const [recordingDisclosure, setRecordingDisclosure] = useState('Cet appel peut être enregistré à des fins de qualité.')
   const [firstMessage, setFirstMessage] = useState(DEFAULT_FIRST_MESSAGE)
   const [fullPrompt, setFullPrompt] = useState(DEFAULT_FULL_PROMPT)
   const [generatingFirstMessage, setGeneratingFirstMessage] = useState(false)

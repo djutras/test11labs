@@ -115,7 +115,7 @@ export async function POST(request: Request) {
       priority: body.priority || 1,
       voicemailAction: voicemailAction as Campaign['voicemailAction'],
       voicemailMessage: body.voicemailMessage || null,
-      recordingDisclosure: body.recordingDisclosure || 'This call may be recorded for quality purposes.',
+      recordingDisclosure: body.recordingDisclosure || 'Cet appel peut être enregistré à des fins de qualité.',
       firstMessage: body.firstMessage || null,
       fullPrompt: body.fullPrompt || null,
       status: 'active'

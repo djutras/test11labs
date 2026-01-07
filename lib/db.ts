@@ -133,7 +133,7 @@ export async function initializeDatabase() {
         priority INT DEFAULT 1,
         voicemail_action VARCHAR(20) DEFAULT 'hangup',
         voicemail_message TEXT,
-        recording_disclosure TEXT DEFAULT 'This call may be recorded for quality purposes.',
+        recording_disclosure TEXT DEFAULT 'Cet appel peut être enregistré à des fins de qualité.',
         first_message TEXT,
         full_prompt TEXT,
         status VARCHAR(20) DEFAULT 'active',

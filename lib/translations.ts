@@ -257,6 +257,10 @@ export const translations = {
     en: 'This message is prepended to the first message of each call',
     fr: 'Ce message est ajouté au début du premier message de chaque appel'
   },
+  recordingDisclosureDefault: {
+    en: 'This call may be recorded for quality purposes.',
+    fr: 'Cet appel peut être enregistré à des fins de qualité.'
+  },
 
   // Campaign Detail Page
   campaignDetails: {
