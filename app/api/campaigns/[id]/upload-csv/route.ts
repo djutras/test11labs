@@ -7,7 +7,8 @@ import {
   createClient,
   createScheduledCall,
   isPhoneOnDnc,
-  getScheduledCallsByCampaign
+  getScheduledCallsByCampaign,
+  initializeDatabase
 } from '@/lib/db'
 import { parseCsv, type CsvContact } from '@/lib/csv-parser'
 import { calculateScheduledTimes } from '@/lib/scheduler'
@@ -20,6 +21,9 @@ interface RouteParams {
 // POST /api/campaigns/[id]/upload-csv
 export async function POST(request: Request, { params }: RouteParams) {
   try {
+    // Initialize database tables
+    await initializeDatabase()
+
     const { id: campaignId } = await params
 
     // Get campaign
