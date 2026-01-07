@@ -120,7 +120,7 @@ export async function POST(request: Request) {
     // Send email notification
     if (campaignId && outcome !== 'failed') {
       try {
-        await sendEmailNotification({
+        const emailSent = await sendEmailNotification({
           campaignId,
           phone: body.phone,
           clientName: body.clientName,
@@ -130,6 +130,11 @@ export async function POST(request: Request) {
           audioUrl,
           conversationId
         })
+
+        // Update email_sent flag in call_log
+        if (emailSent && callLogId) {
+          await updateCallLog(callLogId, { emailSent: true })
+        }
       } catch (err) {
         console.error('[CallComplete] Error sending email:', err)
       }
@@ -157,6 +162,7 @@ export async function POST(request: Request) {
 }
 
 // Helper function to send email notification
+// Returns true if email was sent successfully
 async function sendEmailNotification(params: {
   campaignId: string
   phone?: string
@@ -166,9 +172,9 @@ async function sendEmailNotification(params: {
   transcript?: any
   audioUrl?: string | null
   conversationId?: string
-}) {
+}): Promise<boolean> {
   const campaign = await getCampaignById(params.campaignId)
-  if (!campaign) return
+  if (!campaign) return false
 
   // Format transcript for email
   let transcriptText = 'No transcript available'
@@ -214,6 +220,9 @@ View in dashboard: ${process.env.URL || process.env.DEPLOY_URL}/campaigns/${para
   // Send email using SendGrid
   if (process.env.SENDGRID_API_KEY) {
     try {
+      console.log(`[CallComplete] Sending email to ${campaign.creatorEmail}`)
+      console.log(`[CallComplete] Subject: ${emailSubject}`)
+
       const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
         headers: {
@@ -229,16 +238,21 @@ View in dashboard: ${process.env.URL || process.env.DEPLOY_URL}/campaigns/${para
       })
 
       if (response.ok || response.status === 202) {
-        console.log(`[CallComplete] Email sent to ${campaign.creatorEmail}`)
+        console.log(`[CallComplete] Email sent successfully to ${campaign.creatorEmail}`)
+        return true
       } else {
-        console.error('[CallComplete] Email send failed:', await response.text())
+        const errorText = await response.text()
+        console.error(`[CallComplete] Email send failed (${response.status}):`, errorText)
+        return false
       }
     } catch (err) {
       console.error('[CallComplete] Email error:', err)
+      return false
     }
   } else {
     console.log('[CallComplete] SENDGRID_API_KEY not set, skipping email')
     console.log('[CallComplete] Would send email to:', campaign.creatorEmail)
     console.log('[CallComplete] Subject:', emailSubject)
+    return false
   }
 }
