@@ -7,3 +7,12 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+[functions]
+  directory = "netlify/functions"
+
+# Scheduled function: Process pending calls every 5 minutes (9 AM - 7 PM EST, Mon-Fri)
+# Note: Netlify Scheduled Functions require Pro plan or above for custom schedules
+# This runs every 5 minutes - the function itself checks if it's within calling hours
+[functions."process-calls"]
+  schedule = "*/5 * * * *"
