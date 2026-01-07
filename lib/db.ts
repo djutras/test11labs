@@ -103,9 +103,9 @@ export async function initializeDatabase() {
   try {
     const db = getDb()
 
-    // Create clients table
+    // Create outbound_clients table (separate from numeraone clients)
     await db`
-      CREATE TABLE IF NOT EXISTS clients (
+      CREATE TABLE IF NOT EXISTS outbound_clients (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
         phone VARCHAR(20) NOT NULL UNIQUE,
@@ -267,7 +267,7 @@ export async function findClientByPhone(phone: string): Promise<Client | null> {
       SELECT id, name, phone, accountant, last_interaction as "lastInteraction",
              campaign_id as "campaignId", is_active as "isActive", tags, notes,
              created_at as "createdAt", updated_at as "updatedAt"
-      FROM clients
+      FROM outbound_clients
       WHERE phone = ${normalizedPhone}
          OR phone = ${normalizedPhone.replace('+1', '')}
          OR phone = ${'+1' + normalizedPhone.replace('+1', '')}
@@ -284,13 +284,13 @@ export async function createClient(client: Omit<Client, 'id' | 'createdAt' | 'up
   try {
     const db = getDb()
     const result = await db`
-      INSERT INTO clients (name, phone, accountant, campaign_id, is_active, tags, notes)
+      INSERT INTO outbound_clients (name, phone, accountant, campaign_id, is_active, tags, notes)
       VALUES (${client.name}, ${client.phone}, ${client.accountant || null},
               ${client.campaignId || null}, ${client.isActive ?? true},
               ${client.tags || []}, ${client.notes || null})
       ON CONFLICT (phone) DO UPDATE SET
         name = EXCLUDED.name,
-        campaign_id = COALESCE(EXCLUDED.campaign_id, clients.campaign_id),
+        campaign_id = COALESCE(EXCLUDED.campaign_id, outbound_clients.campaign_id),
         updated_at = NOW()
       RETURNING id, name, phone, accountant, campaign_id as "campaignId",
                 is_active as "isActive", tags, notes,
@@ -307,7 +307,7 @@ export async function updateClient(id: string, updates: Partial<Client>): Promis
   try {
     const db = getDb()
     const result = await db`
-      UPDATE clients SET
+      UPDATE outbound_clients SET
         name = COALESCE(${updates.name || null}, name),
         is_active = COALESCE(${updates.isActive ?? null}, is_active),
         tags = COALESCE(${updates.tags || null}, tags),
@@ -332,7 +332,7 @@ export async function getClientById(id: string): Promise<Client | null> {
       SELECT id, name, phone, accountant, last_interaction as "lastInteraction",
              campaign_id as "campaignId", is_active as "isActive", tags, notes,
              created_at as "createdAt", updated_at as "updatedAt"
-      FROM clients WHERE id = ${id}
+      FROM outbound_clients WHERE id = ${id}
     `
     return result.length > 0 ? result[0] as Client : null
   } catch (error) {
