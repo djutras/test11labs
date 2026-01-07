@@ -51,7 +51,8 @@ export default function LoginPage() {
             padding: '12px',
             fontSize: '16px',
             borderRadius: '4px',
-            border: '1px solid #ccc'
+            border: '1px solid #ccc',
+            color: 'black'
           }}
           autoFocus
         />
