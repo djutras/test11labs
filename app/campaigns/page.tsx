@@ -195,7 +195,7 @@ export default function CampaignsPage() {
                   </div>
 
                   <p className="text-gray-400 text-sm mb-3">
-                    {campaign.creatorEmail} &bull; {campaign.callDays.join(', ')} &bull; {campaign.callStartHour}h-{campaign.callEndHour}h ({campaign.timezone})
+                    {campaign.creatorEmail} &bull; {(campaign.callDays || []).join(', ') || 'No days set'} &bull; {campaign.callStartHour ?? 9}h-{campaign.callEndHour ?? 19}h ({campaign.timezone || 'America/Toronto'})
                   </p>
 
                   {/* Progress bar */}

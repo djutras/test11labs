@@ -201,7 +201,7 @@ export default function CampaignDetailPage() {
             {campaign.creatorEmail} &bull; Priority: {campaign.priority}
           </p>
           <p className="text-gray-500 text-sm mt-1">
-            {campaign.callDays.join(', ')} &bull; {campaign.callStartHour}h-{campaign.callEndHour}h ({campaign.timezone})
+            {(campaign.callDays || []).join(', ') || 'No days set'} &bull; {campaign.callStartHour ?? 9}h-{campaign.callEndHour ?? 19}h ({campaign.timezone || 'America/Toronto'})
           </p>
         </div>
         <div className="flex gap-3">
