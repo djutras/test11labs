@@ -84,8 +84,9 @@ export async function POST(request: Request) {
           transcript = transcriptData.transcript || transcriptData
         }
 
-        // Fetch audio URL
-        audioUrl = `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}/audio`
+        // Build audio URL through our proxy (to handle authentication)
+        const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
+        audioUrl = `${baseUrl}/api/audio/${conversationId}`
       } catch (err) {
         console.error('[CallComplete] Error fetching transcript:', err)
       }
