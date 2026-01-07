@@ -825,6 +825,26 @@ export async function getCallLogByScheduledCallId(scheduledCallId: string): Prom
   }
 }
 
+export async function getCallLogByConversationId(conversationId: string): Promise<CallLog | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId",
+             scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+             call_sid as "callSid", direction, phone, duration, outcome, transcript,
+             audio_url as "audioUrl", notes, review_status as "reviewStatus",
+             email_sent as "emailSent", created_at as "createdAt"
+      FROM call_logs
+      WHERE conversation_id = ${conversationId}
+      LIMIT 1
+    `
+    return result.length > 0 ? result[0] as CallLog : null
+  } catch (error) {
+    console.error('[DB] Error getting call log by conversation ID:', error)
+    return null
+  }
+}
+
 // ============================================
 // DNC (DO NOT CALL) QUERIES
 // ============================================

@@ -2,6 +2,7 @@
 // Appel sortant via ElevenLabs Conversational AI
 
 import { NextResponse } from 'next/server'
+import { createCallLog, updateScheduledCall } from '@/lib/db'
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID
@@ -94,6 +95,28 @@ RÈGLES:
 
     const data = await response.json()
     console.log(`[ElevenLabs] Call initiated:`, data)
+
+    // Create a call_log entry to store the mapping of conversation_id to scheduledCallId/campaignId
+    // This will be used by the webhook to identify the call
+    if (data.conversation_id && (scheduledCallId || campaignId)) {
+      const callLog = await createCallLog({
+        campaignId: campaignId || undefined,
+        scheduledCallId: scheduledCallId || undefined,
+        conversationId: data.conversation_id,
+        callSid: data.callSid,
+        direction: 'outbound',
+        phone: phoneNumber,
+        outcome: 'pending',
+        reviewStatus: 'pending',
+        emailSent: false
+      })
+      console.log(`[ElevenLabs] Call log created:`, callLog?.id)
+
+      // Update scheduled call status to 'calling'
+      if (scheduledCallId) {
+        await updateScheduledCall(scheduledCallId, { status: 'calling' })
+      }
+    }
 
     return NextResponse.json({
       success: true,
