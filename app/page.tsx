@@ -240,7 +240,7 @@ RÈGLES:
   }
 
   return (
-    <div>
+    <div style={{ backgroundColor: '#f8f9fa', color: 'black', minHeight: '100vh', padding: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h1>Test ElevenLabs + Claude</h1>
         <div style={{ display: 'flex', gap: '10px' }}>
