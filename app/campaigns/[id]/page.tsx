@@ -930,7 +930,7 @@ export default function CampaignDetailPage() {
               <div className="bg-gray-900 rounded-lg p-4 space-y-3 max-h-96 overflow-y-auto">
                 {/* Handle both formats: transcript as array or transcript.transcript as array */}
                 {(Array.isArray(selectedTranscript.transcript) ? selectedTranscript.transcript : selectedTranscript.transcript?.transcript) ? (
-                  (Array.isArray(selectedTranscript.transcript) ? selectedTranscript.transcript : selectedTranscript.transcript.transcript).map((entry: any, index: number) => (
+                  (Array.isArray(selectedTranscript.transcript) ? selectedTranscript.transcript : selectedTranscript.transcript?.transcript)?.map((entry: any, index: number) => (
                     <div key={index} className={`flex gap-3 ${entry.role === 'agent' ? '' : 'flex-row-reverse'}`}>
                       <div className={`px-3 py-2 rounded-lg max-w-[80%] ${
                         entry.role === 'agent'
