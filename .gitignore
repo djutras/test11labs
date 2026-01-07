@@ -12,3 +12,6 @@ node_modules/
 
 # Misc
 nul
+
+# Local Netlify folder
+.netlify

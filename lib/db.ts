@@ -294,28 +294,23 @@ export async function getClientById(id: string): Promise<Client | null> {
 // CAMPAIGN QUERIES
 // ============================================
 
-export async function createCampaign(campaign: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<Campaign | null> {
-  try {
-    const db = getDb()
-    const result = await db`
-      INSERT INTO campaigns (name, creator_email, call_days, call_start_hour, call_end_hour,
-                            timezone, priority, voicemail_action, voicemail_message,
-                            recording_disclosure, status)
-      VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.callDays},
-              ${campaign.callStartHour}, ${campaign.callEndHour}, ${campaign.timezone},
-              ${campaign.priority}, ${campaign.voicemailAction}, ${campaign.voicemailMessage || null},
-              ${campaign.recordingDisclosure}, ${campaign.status})
-      RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
-                call_start_hour as "callStartHour", call_end_hour as "callEndHour",
-                timezone, priority, voicemail_action as "voicemailAction",
-                voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
-                status, created_at as "createdAt", updated_at as "updatedAt"
-    `
-    return result[0] as Campaign
-  } catch (error) {
-    console.error('[DB] Error creating campaign:', error)
-    return null
-  }
+export async function createCampaign(campaign: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<Campaign> {
+  const db = getDb()
+  const result = await db`
+    INSERT INTO campaigns (name, creator_email, call_days, call_start_hour, call_end_hour,
+                          timezone, priority, voicemail_action, voicemail_message,
+                          recording_disclosure, status)
+    VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.callDays},
+            ${campaign.callStartHour}, ${campaign.callEndHour}, ${campaign.timezone},
+            ${campaign.priority}, ${campaign.voicemailAction}, ${campaign.voicemailMessage || null},
+            ${campaign.recordingDisclosure}, ${campaign.status})
+    RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
+              call_start_hour as "callStartHour", call_end_hour as "callEndHour",
+              timezone, priority, voicemail_action as "voicemailAction",
+              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
+              status, created_at as "createdAt", updated_at as "updatedAt"
+  `
+  return result[0] as Campaign
 }
 
 export async function getCampaigns(): Promise<Campaign[]> {

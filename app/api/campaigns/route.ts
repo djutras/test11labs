@@ -121,21 +121,15 @@ export async function POST(request: Request) {
 
     const campaign = await createCampaign(campaignData)
 
-    if (!campaign) {
-      return NextResponse.json(
-        { success: false, error: 'Failed to create campaign' },
-        { status: 500 }
-      )
-    }
-
     return NextResponse.json({
       success: true,
       campaign
     }, { status: 201 })
   } catch (error) {
     console.error('[API] Error creating campaign:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { success: false, error: 'Failed to create campaign' },
+      { success: false, error: `Failed to create campaign: ${errorMessage}` },
       { status: 500 }
     )
   }
