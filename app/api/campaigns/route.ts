@@ -105,9 +105,20 @@ export async function POST(request: Request) {
       )
     }
 
+    // Validate campaign mode
+    const validModes = ['production', 'test']
+    const mode = body.mode || 'production'
+    if (!validModes.includes(mode)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid campaign mode. Must be "production" or "test"' },
+        { status: 400 }
+      )
+    }
+
     const campaignData: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'> = {
       name: body.name,
       creatorEmail: body.creatorEmail,
+      mode: mode as Campaign['mode'],
       callDays: callDays.map((d: string) => d.toLowerCase()),
       callStartHour,
       callEndHour,

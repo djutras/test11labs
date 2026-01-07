@@ -37,6 +37,7 @@ export interface Campaign {
   id: string
   name: string
   creatorEmail: string
+  mode: 'production' | 'test'
   callDays: string[]
   callStartHour: number
   callEndHour: number
@@ -126,6 +127,7 @@ export async function initializeDatabase() {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
         creator_email VARCHAR(255) NOT NULL,
+        mode VARCHAR(20) DEFAULT 'production',
         call_days VARCHAR(50)[],
         call_start_hour INT DEFAULT 9,
         call_end_hour INT DEFAULT 19,
@@ -241,6 +243,9 @@ export async function initializeDatabase() {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'full_prompt') THEN
           ALTER TABLE campaigns ADD COLUMN full_prompt TEXT;
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'mode') THEN
+          ALTER TABLE campaigns ADD COLUMN mode VARCHAR(20) DEFAULT 'production';
+        END IF;
         -- Make slug column nullable if it exists (legacy column)
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'slug') THEN
           ALTER TABLE campaigns ALTER COLUMN slug DROP NOT NULL;
@@ -348,15 +353,15 @@ export async function getClientById(id: string): Promise<Client | null> {
 export async function createCampaign(campaign: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<Campaign> {
   const db = getDb()
   const result = await db`
-    INSERT INTO campaigns (name, creator_email, call_days, call_start_hour, call_end_hour,
+    INSERT INTO campaigns (name, creator_email, mode, call_days, call_start_hour, call_end_hour,
                           timezone, priority, voicemail_action, voicemail_message,
                           recording_disclosure, first_message, full_prompt, status)
-    VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.callDays},
+    VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.mode || 'production'}, ${campaign.callDays},
             ${campaign.callStartHour}, ${campaign.callEndHour}, ${campaign.timezone},
             ${campaign.priority}, ${campaign.voicemailAction}, ${campaign.voicemailMessage || null},
             ${campaign.recordingDisclosure}, ${campaign.firstMessage || null}, ${campaign.fullPrompt || null},
             ${campaign.status})
-    RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
+    RETURNING id, name, creator_email as "creatorEmail", mode, call_days as "callDays",
               call_start_hour as "callStartHour", call_end_hour as "callEndHour",
               timezone, priority, voicemail_action as "voicemailAction",
               voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
@@ -370,7 +375,7 @@ export async function getCampaigns(): Promise<Campaign[]> {
   try {
     const db = getDb()
     const result = await db`
-      SELECT id, name, creator_email as "creatorEmail", call_days as "callDays",
+      SELECT id, name, creator_email as "creatorEmail", mode, call_days as "callDays",
              call_start_hour as "callStartHour", call_end_hour as "callEndHour",
              timezone, priority, voicemail_action as "voicemailAction",
              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
@@ -390,7 +395,7 @@ export async function getCampaignById(id: string): Promise<Campaign | null> {
   try {
     const db = getDb()
     const result = await db`
-      SELECT id, name, creator_email as "creatorEmail", call_days as "callDays",
+      SELECT id, name, creator_email as "creatorEmail", mode, call_days as "callDays",
              call_start_hour as "callStartHour", call_end_hour as "callEndHour",
              timezone, priority, voicemail_action as "voicemailAction",
              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
@@ -411,6 +416,7 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>): Pr
     const result = await db`
       UPDATE campaigns SET
         name = COALESCE(${updates.name || null}, name),
+        mode = COALESCE(${updates.mode || null}, mode),
         call_days = COALESCE(${updates.callDays || null}, call_days),
         call_start_hour = COALESCE(${updates.callStartHour ?? null}, call_start_hour),
         call_end_hour = COALESCE(${updates.callEndHour ?? null}, call_end_hour),
@@ -423,7 +429,7 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>): Pr
         status = COALESCE(${updates.status || null}, status),
         updated_at = NOW()
       WHERE id = ${id}
-      RETURNING id, name, creator_email as "creatorEmail", call_days as "callDays",
+      RETURNING id, name, creator_email as "creatorEmail", mode, call_days as "callDays",
                 call_start_hour as "callStartHour", call_end_hour as "callEndHour",
                 timezone, priority, voicemail_action as "voicemailAction",
                 voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",

@@ -125,7 +125,7 @@ export async function POST(request: Request, { params }: RouteParams) {
     }
 
     // Check DNC for remaining contacts
-    const contactsToSchedule: CsvContact[] = []
+    let contactsToSchedule: CsvContact[] = []
     for (const contact of newContacts) {
       const isOnDnc = await isPhoneOnDnc(contact.phone, campaignId)
       if (isOnDnc) {
@@ -134,6 +134,17 @@ export async function POST(request: Request, { params }: RouteParams) {
       } else {
         contactsToSchedule.push(contact)
       }
+    }
+
+    // TEST MODE: Limit to 3 contacts
+    const isTestMode = campaign.mode === 'test'
+    let testModeSkipped = 0
+    if (isTestMode && contactsToSchedule.length > 3) {
+      testModeSkipped = contactsToSchedule.length - 3
+      results.warnings.push(
+        `Mode test: Seulement 3 contacts seront programmés. ${testModeSkipped} contact(s) ignoré(s).`
+      )
+      contactsToSchedule = contactsToSchedule.slice(0, 3)
     }
 
     // Calculate scheduled times

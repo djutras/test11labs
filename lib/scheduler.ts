@@ -14,9 +14,24 @@ interface ScheduleOptions {
 /**
  * Calculate scheduled times for a batch of contacts
  * Spreads calls evenly across allowed hours and days
+ *
+ * In TEST mode:
+ * - Fixed 10-minute intervals
+ * - Maximum 3 contacts
+ *
+ * In PRODUCTION mode:
+ * - 15-30 minute random intervals
+ * - No contact limit
  */
 export function calculateScheduledTimes(options: ScheduleOptions): Date[] {
-  const { campaign, contactCount, startFrom } = options
+  const { campaign, startFrom } = options
+  let { contactCount } = options
+
+  // TEST MODE: Limit to 3 contacts and use 10-minute intervals
+  const isTestMode = campaign.mode === 'test'
+  if (isTestMode) {
+    contactCount = Math.min(contactCount, 3)
+  }
 
   if (contactCount === 0) return []
 
@@ -38,39 +53,50 @@ export function calculateScheduledTimes(options: ScheduleOptions): Date[] {
   const endHour = campaign.callEndHour
   const windowMinutes = (endHour - startHour) * 60
 
-  // Calculate interval between calls (minimum 15 minutes, spread evenly)
-  // If we have more contacts than slots, we'll extend to multiple days
-  const slotsPerDay = Math.floor(windowMinutes / 15) // 15-minute minimum intervals
+  // Calculate interval between calls
+  // TEST MODE: Fixed 10-minute intervals
+  // PRODUCTION: minimum 15 minutes, spread evenly
+  const baseInterval = isTestMode ? 10 : 15
+  const slotsPerDay = Math.floor(windowMinutes / baseInterval)
   const daysNeeded = Math.ceil(contactCount / slotsPerDay)
 
   // Find the first valid start time
   let currentDate = new Date(now)
-  currentDate = findNextValidTime(currentDate, allowedDays, startHour, endHour, campaign.timezone)
+
+  // In test mode, start immediately (don't wait for next valid window if not needed)
+  if (!isTestMode) {
+    currentDate = findNextValidTime(currentDate, allowedDays, startHour, endHour, campaign.timezone)
+  }
 
   // Schedule each contact
   for (let i = 0; i < contactCount; i++) {
-    // Add some randomness (0-10 minutes) to avoid exact patterns
-    const randomOffset = Math.floor(Math.random() * 10)
+    // TEST MODE: No randomness, fixed 10-minute intervals
+    // PRODUCTION: Add some randomness (0-10 minutes) to avoid exact patterns
+    const randomOffset = isTestMode ? 0 : Math.floor(Math.random() * 10)
     const scheduledTime = new Date(currentDate)
     scheduledTime.setMinutes(scheduledTime.getMinutes() + randomOffset)
 
     scheduledTimes.push(scheduledTime)
 
-    // Move to next slot (15-30 minute interval)
-    const intervalMinutes = 15 + Math.floor(Math.random() * 15)
+    // Move to next slot
+    // TEST MODE: Fixed 10-minute interval
+    // PRODUCTION: 15-30 minute random interval
+    const intervalMinutes = isTestMode ? 10 : (15 + Math.floor(Math.random() * 15))
     currentDate = new Date(currentDate.getTime() + intervalMinutes * 60 * 1000)
 
-    // Check if we've exceeded the end hour
-    const currentHour = getHourInTimezone(currentDate, campaign.timezone)
-    if (currentHour >= endHour) {
-      // Move to next valid day
-      currentDate = findNextValidTime(
-        addDays(currentDate, 1),
-        allowedDays,
-        startHour,
-        endHour,
-        campaign.timezone
-      )
+    // Check if we've exceeded the end hour (only in production mode)
+    if (!isTestMode) {
+      const currentHour = getHourInTimezone(currentDate, campaign.timezone)
+      if (currentHour >= endHour) {
+        // Move to next valid day
+        currentDate = findNextValidTime(
+          addDays(currentDate, 1),
+          allowedDays,
+          startHour,
+          endHour,
+          campaign.timezone
+        )
+      }
     }
   }
 

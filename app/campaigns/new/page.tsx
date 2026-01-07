@@ -29,6 +29,7 @@ export default function NewCampaignPage() {
   // Form state
   const [name, setName] = useState('')
   const [creatorEmail, setCreatorEmail] = useState('')
+  const [mode, setMode] = useState<'production' | 'test'>('production')
   const [callDays, setCallDays] = useState<string[]>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday'])
   const [callStartHour, setCallStartHour] = useState(9)
   const [callEndHour, setCallEndHour] = useState(19)
@@ -117,6 +118,7 @@ export default function NewCampaignPage() {
         body: JSON.stringify({
           name: name.trim(),
           creatorEmail: creatorEmail.trim(),
+          mode,
           callDays,
           callStartHour,
           callEndHour,
@@ -205,6 +207,64 @@ export default function NewCampaignPage() {
               placeholder="your@email.com"
               className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
             />
+          </div>
+
+          {/* Campaign Mode */}
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              {language === 'fr' ? 'Mode de campagne' : 'Campaign Mode'}
+            </label>
+            <div className="flex gap-4">
+              <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition ${
+                mode === 'production'
+                  ? 'bg-blue-600 border-2 border-blue-400'
+                  : 'bg-gray-700 border-2 border-gray-600 hover:border-gray-500'
+              }`}>
+                <input
+                  type="radio"
+                  name="mode"
+                  value="production"
+                  checked={mode === 'production'}
+                  onChange={() => setMode('production')}
+                  className="sr-only"
+                />
+                <span className="text-xl">&#128188;</span>
+                <div>
+                  <div className="font-medium">Production</div>
+                  <div className="text-sm text-gray-300">
+                    {language === 'fr' ? 'Appels répartis sur la journée' : 'Calls spread throughout the day'}
+                  </div>
+                </div>
+              </label>
+              <label className={`flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition ${
+                mode === 'test'
+                  ? 'bg-teal-600 border-2 border-teal-400'
+                  : 'bg-gray-700 border-2 border-gray-600 hover:border-gray-500'
+              }`}>
+                <input
+                  type="radio"
+                  name="mode"
+                  value="test"
+                  checked={mode === 'test'}
+                  onChange={() => setMode('test')}
+                  className="sr-only"
+                />
+                <span className="text-xl">&#128295;</span>
+                <div>
+                  <div className="font-medium">Test</div>
+                  <div className="text-sm text-gray-300">
+                    {language === 'fr' ? 'Appels aux 10 min, max 3' : 'Calls every 10 min, max 3'}
+                  </div>
+                </div>
+              </label>
+            </div>
+            {mode === 'test' && (
+              <p className="text-teal-400 text-sm mt-2">
+                &#9888; {language === 'fr'
+                  ? 'Mode test: Les appels seront programmés toutes les 10 minutes. Maximum 3 contacts par campagne.'
+                  : 'Test mode: Calls will be scheduled every 10 minutes. Maximum 3 contacts per campaign.'}
+              </p>
+            )}
           </div>
 
           {/* First Message */}

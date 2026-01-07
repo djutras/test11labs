@@ -153,8 +153,20 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       }
     }
 
+    // Validate mode if provided
+    if (body.mode) {
+      const validModes = ['production', 'test']
+      if (!validModes.includes(body.mode)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid campaign mode. Must be "production" or "test"' },
+          { status: 400 }
+        )
+      }
+    }
+
     const updates: Partial<Campaign> = {}
     if (body.name) updates.name = body.name
+    if (body.mode) updates.mode = body.mode
     if (body.callDays) updates.callDays = body.callDays
     if (body.callStartHour !== undefined) updates.callStartHour = body.callStartHour
     if (body.callEndHour !== undefined) updates.callEndHour = body.callEndHour
