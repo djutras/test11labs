@@ -165,8 +165,8 @@ export async function POST(request: Request, { params }: RouteParams) {
           clientId: client.id,
           phone: contact.phone,
           name: contact.name,
-          firstMessage: replaceVariables(campaign.firstMessage, contactData) || null,
-          fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || null,
+          firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
+          fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
           scheduledAt: scheduledAt.toISOString(),
           status: 'pending',
           retryCount: 0
