@@ -231,6 +231,10 @@ export async function initializeDatabase() {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'status') THEN
           ALTER TABLE campaigns ADD COLUMN status VARCHAR(20) DEFAULT 'active';
         END IF;
+        -- Make slug column nullable if it exists (legacy column)
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'slug') THEN
+          ALTER TABLE campaigns ALTER COLUMN slug DROP NOT NULL;
+        END IF;
       END $$;
     `
 
