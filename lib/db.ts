@@ -613,6 +613,23 @@ export async function hasCallInProgress(): Promise<boolean> {
   }
 }
 
+export async function getScheduledCallById(id: string): Promise<ScheduledCall | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId", phone, name,
+             first_message as "firstMessage", full_prompt as "fullPrompt",
+             scheduled_at as "scheduledAt", status, retry_count as "retryCount",
+             skipped_reason as "skippedReason", created_at as "createdAt"
+      FROM scheduled_calls WHERE id = ${id}
+    `
+    return result.length > 0 ? result[0] as ScheduledCall : null
+  } catch (error) {
+    console.error('[DB] Error getting scheduled call:', error)
+    return null
+  }
+}
+
 // ============================================
 // CALL LOGS QUERIES
 // ============================================
@@ -765,6 +782,46 @@ export async function getClientCallHistory(clientId: string): Promise<CallLog[]>
   } catch (error) {
     console.error('[DB] Error getting client call history:', error)
     return []
+  }
+}
+
+export async function getCallLogsByCampaign(campaignId: string): Promise<CallLog[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId",
+             scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+             call_sid as "callSid", direction, phone, duration, outcome, transcript,
+             audio_url as "audioUrl", notes, review_status as "reviewStatus",
+             email_sent as "emailSent", created_at as "createdAt"
+      FROM call_logs
+      WHERE campaign_id = ${campaignId}
+      ORDER BY created_at DESC
+    `
+    return result as CallLog[]
+  } catch (error) {
+    console.error('[DB] Error getting campaign call logs:', error)
+    return []
+  }
+}
+
+export async function getCallLogByScheduledCallId(scheduledCallId: string): Promise<CallLog | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, campaign_id as "campaignId", client_id as "clientId",
+             scheduled_call_id as "scheduledCallId", conversation_id as "conversationId",
+             call_sid as "callSid", direction, phone, duration, outcome, transcript,
+             audio_url as "audioUrl", notes, review_status as "reviewStatus",
+             email_sent as "emailSent", created_at as "createdAt"
+      FROM call_logs
+      WHERE scheduled_call_id = ${scheduledCallId}
+      LIMIT 1
+    `
+    return result.length > 0 ? result[0] as CallLog : null
+  } catch (error) {
+    console.error('[DB] Error getting call log by scheduled call:', error)
+    return null
   }
 }
 

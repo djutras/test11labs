@@ -205,25 +205,24 @@ ${transcriptText}
 View in dashboard: ${process.env.URL || process.env.DEPLOY_URL}/campaigns/${params.campaignId}
 `
 
-  // Send email using Resend (or other service)
-  // For now, we'll use a simple fetch to Resend API
-  if (process.env.RESEND_API_KEY) {
+  // Send email using SendGrid
+  if (process.env.SENDGRID_API_KEY) {
     try {
-      const response = await fetch('https://api.resend.com/emails', {
+      const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Authorization': `Bearer ${process.env.SENDGRID_API_KEY}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          from: 'Call Campaigns <calls@resend.dev>',
-          to: [campaign.creatorEmail],
+          personalizations: [{ to: [{ email: campaign.creatorEmail }] }],
+          from: { email: 'info@opportunitesparcourriel.com', name: 'Call Campaigns' },
           subject: emailSubject,
-          text: emailBody
+          content: [{ type: 'text/plain', value: emailBody }]
         })
       })
 
-      if (response.ok) {
+      if (response.ok || response.status === 202) {
         console.log(`[CallComplete] Email sent to ${campaign.creatorEmail}`)
       } else {
         console.error('[CallComplete] Email send failed:', await response.text())
@@ -232,7 +231,7 @@ View in dashboard: ${process.env.URL || process.env.DEPLOY_URL}/campaigns/${para
       console.error('[CallComplete] Email error:', err)
     }
   } else {
-    console.log('[CallComplete] RESEND_API_KEY not set, skipping email')
+    console.log('[CallComplete] SENDGRID_API_KEY not set, skipping email')
     console.log('[CallComplete] Would send email to:', campaign.creatorEmail)
     console.log('[CallComplete] Subject:', emailSubject)
   }

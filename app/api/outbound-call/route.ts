@@ -7,9 +7,14 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID
 const ELEVENLABS_PHONE_NUMBER_ID = process.env.ELEVENLABS_PHONE_NUMBER_ID
 
+// Get base URL for webhooks
+const getBaseUrl = () => {
+  return process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
+}
+
 export async function POST(req: Request) {
   try {
-    const { phoneNumber, firstMessage, fullPrompt } = await req.json()
+    const { phoneNumber, firstMessage, fullPrompt, scheduledCallId, campaignId } = await req.json()
 
     if (!phoneNumber) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 })
@@ -40,6 +45,14 @@ RÈGLES:
 
     const defaultFirstMessage = "Bonjour! Ici Nicolas de Compta I A. Comment puis-je vous aider aujourd'hui?"
 
+    // Build webhook URL with metadata for callback
+    const baseUrl = getBaseUrl()
+    const webhookUrl = new URL('/api/elevenlabs-webhook', baseUrl)
+    if (scheduledCallId) webhookUrl.searchParams.set('scheduledCallId', scheduledCallId)
+    if (campaignId) webhookUrl.searchParams.set('campaignId', campaignId)
+
+    console.log(`[ElevenLabs] Webhook URL: ${webhookUrl.toString()}`)
+
     // Appel API ElevenLabs pour initier l'appel (Twilio integration)
     const response = await fetch(
       `https://api.elevenlabs.io/v1/convai/twilio/outbound-call`,
@@ -57,6 +70,13 @@ RÈGLES:
             dynamic_variables: {
               full_prompt: fullPrompt || defaultPrompt,
               first_message: firstMessage || defaultFirstMessage
+            },
+            // Pass metadata for webhook callback
+            conversation_config_override: {
+              conversation_id_metadata: {
+                scheduled_call_id: scheduledCallId || '',
+                campaign_id: campaignId || ''
+              }
             }
           }
         }),

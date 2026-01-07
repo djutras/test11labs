@@ -7,6 +7,15 @@ import { useLanguage } from '@/lib/language-context'
 import { t, getDaysOfWeek } from '@/lib/translations'
 import { LanguageSelector } from '@/components/LanguageSelector'
 
+interface CallLogData {
+  id: string
+  conversationId?: string
+  duration?: number
+  outcome?: string
+  transcript?: { transcript?: Array<{ role: string; message: string }> } | null
+  audioUrl?: string
+}
+
 interface ScheduledCall {
   id: string
   phone: string
@@ -15,6 +24,7 @@ interface ScheduledCall {
   scheduledAt: string
   status: string
   retryCount: number
+  callLog?: CallLogData | null
 }
 
 interface Campaign {
@@ -74,6 +84,17 @@ export default function CampaignDetailPage() {
   })
   const [generatingFirstMessage, setGeneratingFirstMessage] = useState(false)
   const [generatingFullPrompt, setGeneratingFullPrompt] = useState(false)
+
+  // Transcript modal state
+  const [showTranscriptModal, setShowTranscriptModal] = useState(false)
+  const [selectedTranscript, setSelectedTranscript] = useState<CallLogData | null>(null)
+  const [selectedCallName, setSelectedCallName] = useState<string>('')
+
+  const openTranscriptModal = (callLog: CallLogData, name: string) => {
+    setSelectedTranscript(callLog)
+    setSelectedCallName(name)
+    setShowTranscriptModal(true)
+  }
 
   useEffect(() => {
     const auth = localStorage.getItem('authenticated')
@@ -535,6 +556,7 @@ export default function CampaignDetailPage() {
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Prévu' : 'Scheduled'}</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('status', language)}</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Tentatives' : 'Retries'}</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Actions' : 'Actions'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -549,6 +571,34 @@ export default function CampaignDetailPage() {
                       </span>
                     </td>
                     <td className="py-3 px-4 text-sm">{call.retryCount}</td>
+                    <td className="py-3 px-4">
+                      {call.callLog ? (
+                        <div className="flex gap-2">
+                          {call.callLog.transcript && (
+                            <button
+                              onClick={() => openTranscriptModal(call.callLog!, call.name || call.phone)}
+                              className="px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs transition"
+                              title={language === 'fr' ? 'Voir le transcript' : 'View transcript'}
+                            >
+                              {language === 'fr' ? 'Transcript' : 'Transcript'}
+                            </button>
+                          )}
+                          {call.callLog.audioUrl && (
+                            <a
+                              href={`/api/conversation/${call.callLog.conversationId}/audio`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2 py-1 bg-green-600 hover:bg-green-500 rounded text-xs transition"
+                              title={language === 'fr' ? 'Écouter l\'enregistrement' : 'Listen to recording'}
+                            >
+                              {language === 'fr' ? 'Audio' : 'Audio'}
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-500 text-xs">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -781,6 +831,88 @@ export default function CampaignDetailPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transcript Modal */}
+      {showTranscriptModal && selectedTranscript && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-800 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">
+                  {language === 'fr' ? 'Transcript' : 'Transcript'} - {selectedCallName}
+                </h2>
+                <button
+                  onClick={() => setShowTranscriptModal(false)}
+                  className="text-gray-400 hover:text-white text-2xl"
+                >
+                  &times;
+                </button>
+              </div>
+
+              {/* Call info */}
+              {selectedTranscript.duration && (
+                <div className="mb-4 text-sm text-gray-400">
+                  {language === 'fr' ? 'Durée' : 'Duration'}: {Math.floor(selectedTranscript.duration / 60)}m {selectedTranscript.duration % 60}s
+                  {selectedTranscript.outcome && (
+                    <span className="ml-4">
+                      {language === 'fr' ? 'Résultat' : 'Outcome'}: {selectedTranscript.outcome}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Transcript content */}
+              <div className="bg-gray-900 rounded-lg p-4 space-y-3 max-h-96 overflow-y-auto">
+                {selectedTranscript.transcript?.transcript ? (
+                  selectedTranscript.transcript.transcript.map((entry, index) => (
+                    <div key={index} className={`flex gap-3 ${entry.role === 'agent' ? '' : 'flex-row-reverse'}`}>
+                      <div className={`px-3 py-2 rounded-lg max-w-[80%] ${
+                        entry.role === 'agent'
+                          ? 'bg-blue-600/20 text-blue-100'
+                          : 'bg-green-600/20 text-green-100'
+                      }`}>
+                        <div className="text-xs text-gray-400 mb-1">
+                          {entry.role === 'agent' ? 'AI' : (language === 'fr' ? 'Client' : 'Client')}
+                        </div>
+                        <div>{entry.message}</div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-gray-400 text-center">
+                    {language === 'fr' ? 'Aucun transcript disponible' : 'No transcript available'}
+                  </p>
+                )}
+              </div>
+
+              {/* Audio link */}
+              {selectedTranscript.audioUrl && selectedTranscript.conversationId && (
+                <div className="mt-4">
+                  <a
+                    href={`/api/conversation/${selectedTranscript.conversationId}/audio`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg transition"
+                  >
+                    <span>&#9654;</span>
+                    {language === 'fr' ? 'Écouter l\'enregistrement' : 'Listen to recording'}
+                  </a>
+                </div>
+              )}
+
+              {/* Close button */}
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setShowTranscriptModal(false)}
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg font-medium transition"
+                >
+                  {language === 'fr' ? 'Fermer' : 'Close'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

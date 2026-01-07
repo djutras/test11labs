@@ -8,7 +8,9 @@ import {
   deleteCampaign,
   getCampaignStats,
   getScheduledCallsByCampaign,
-  type Campaign
+  getCallLogsByCampaign,
+  type Campaign,
+  type CallLog
 } from '@/lib/db'
 
 interface RouteParams {
@@ -35,12 +37,39 @@ export async function GET(request: Request, { params }: RouteParams) {
     // Get scheduled calls for this campaign
     const scheduledCalls = await getScheduledCallsByCampaign(id)
 
+    // Get call logs for this campaign
+    const callLogs = await getCallLogsByCampaign(id)
+
+    // Create a map of scheduled call ID to call log for quick lookup
+    const callLogMap = new Map<string, CallLog>()
+    for (const log of callLogs) {
+      if (log.scheduledCallId) {
+        callLogMap.set(log.scheduledCallId, log)
+      }
+    }
+
+    // Merge call logs into scheduled calls
+    const scheduledCallsWithLogs = scheduledCalls.map(call => {
+      const callLog = callLogMap.get(call.id)
+      return {
+        ...call,
+        callLog: callLog ? {
+          id: callLog.id,
+          conversationId: callLog.conversationId,
+          duration: callLog.duration,
+          outcome: callLog.outcome,
+          transcript: callLog.transcript,
+          audioUrl: callLog.audioUrl
+        } : null
+      }
+    })
+
     return NextResponse.json({
       success: true,
       campaign: {
         ...campaign,
         stats,
-        scheduledCalls
+        scheduledCalls: scheduledCallsWithLogs
       }
     })
   } catch (error) {
