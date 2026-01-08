@@ -15,7 +15,7 @@ const getBaseUrl = () => {
 
 export async function POST(req: Request) {
   try {
-    const { phoneNumber, firstMessage, fullPrompt, scheduledCallId, campaignId } = await req.json()
+    const { phoneNumber, firstMessage, fullPrompt, scheduledCallId, campaignId, contactName } = await req.json()
 
     if (!phoneNumber) {
       return NextResponse.json({ error: 'Phone number is required' }, { status: 400 })
@@ -70,7 +70,8 @@ RÈGLES:
           conversation_initiation_client_data: {
             dynamic_variables: {
               full_prompt: fullPrompt || defaultPrompt,
-              first_message: firstMessage || defaultFirstMessage
+              first_message: firstMessage || defaultFirstMessage,
+              name: contactName || ''
             },
             // Pass metadata for webhook callback
             conversation_config_override: {

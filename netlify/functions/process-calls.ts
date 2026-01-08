@@ -156,7 +156,8 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
         firstMessage: firstMessageWithDisclosure,
         fullPrompt: call.fullPrompt || '',
         scheduledCallId: call.id, // Pass this for callback tracking
-        campaignId: call.campaignId
+        campaignId: call.campaignId,
+        contactName: call.name || ''
       })
     })
 
