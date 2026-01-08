@@ -71,11 +71,13 @@ export async function POST(request: Request) {
       outcome = 'failed'
     }
 
-    // Get phone number from scheduled call if still not available
-    if (scheduledCallId && !phone) {
+    // Get phone number and client name from scheduled call
+    let clientName: string | undefined
+    if (scheduledCallId) {
       const scheduledCall = await getScheduledCallById(scheduledCallId)
       if (scheduledCall) {
-        phone = scheduledCall.phone
+        if (!phone) phone = scheduledCall.phone
+        clientName = scheduledCall.name || undefined
       }
     }
 
@@ -93,7 +95,8 @@ export async function POST(request: Request) {
         duration: callDuration,
         outcome,
         phone,
-        callLogId
+        callLogId,
+        clientName
       })
     })
 
