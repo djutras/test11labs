@@ -303,6 +303,16 @@ export default function CampaignsPage() {
           ))}
         </div>
       )}
+
+      {/* Lien vers page de test */}
+      <div className="mt-8 text-center">
+        <Link
+          href="/"
+          className="text-gray-400 hover:text-blue-400 transition"
+        >
+          🧪 Test appel (ElevenLabs + Claude)
+        </Link>
+      </div>
     </div>
   )
 }

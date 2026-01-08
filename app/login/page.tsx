@@ -15,7 +15,7 @@ export default function LoginPage() {
 
     if (password === VALID_PASSWORD) {
       localStorage.setItem('authenticated', 'true')
-      router.push('/')
+      router.push('/campaigns')
     } else {
       setError('Mot de passe incorrect')
       setPassword('')
