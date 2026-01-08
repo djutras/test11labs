@@ -36,7 +36,7 @@ export async function POST(req: Request) {
 
     // Prompt par défaut
     const defaultPrompt = `Tu es Nicolas, assistant virtuel de Compta I A.
-Tu fais un appel sortant pour contacter un client.
+Tu fais un appel sortant pour contacter {{name}}.
 
 RÈGLES:
 - Sois professionnel et chaleureux
@@ -44,7 +44,11 @@ RÈGLES:
 - Si question complexe, propose de transférer à un comptable
 - Garde les réponses concises pour la conversation téléphonique`
 
-    const defaultFirstMessage = "Bonjour! Ici Nicolas de Compta I A. Comment puis-je vous aider aujourd'hui?"
+    const defaultFirstMessage = "Bonjour {{name}}! Ici Nicolas de Compta I A. Comment puis-je vous aider aujourd'hui?"
+
+    // Substitute {{name}} with actual contact name in first message
+    const actualFirstMessage = (firstMessage || defaultFirstMessage).replace(/\{\{name\}\}/gi, contactName || '')
+    const actualFullPrompt = (fullPrompt || defaultPrompt).replace(/\{\{name\}\}/gi, contactName || '')
 
     // Build webhook URL with metadata for callback
     const baseUrl = getBaseUrl()
@@ -69,8 +73,8 @@ RÈGLES:
           to_number: phoneNumber,
           conversation_initiation_client_data: {
             dynamic_variables: {
-              full_prompt: fullPrompt || defaultPrompt,
-              first_message: firstMessage || defaultFirstMessage,
+              full_prompt: actualFullPrompt,
+              first_message: actualFirstMessage,
               name: contactName || ''
             },
             // Pass metadata for webhook callback
