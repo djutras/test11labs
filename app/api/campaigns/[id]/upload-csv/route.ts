@@ -11,7 +11,7 @@ import {
   initializeDatabase
 } from '@/lib/db'
 import { parseCsv, type CsvContact } from '@/lib/csv-parser'
-import { calculateScheduledTimes } from '@/lib/scheduler'
+import { calculateMultiDaySchedule } from '@/lib/scheduler'
 import { replaceVariables } from '@/lib/variable-replacer'
 
 interface RouteParams {
@@ -136,124 +136,65 @@ export async function POST(request: Request, { params }: RouteParams) {
       }
     }
 
-    // TEST MODE: Multiple calls per contact (wave-based scheduling)
-    const isTestMode = campaign.mode === 'test'
-    const callsPerContact = isTestMode ? 3 : 1  // 3 calls per contact in test mode
+    // Calculate multi-day schedule using campaign settings
+    const callsPerDay = campaign.callsPerDayPerContact ?? 1
+    const durationDays = campaign.campaignDurationDays ?? 5
     const contactCount = contactsToSchedule.length
-    const totalCalls = contactCount * callsPerContact
+    const totalCalls = contactCount * callsPerDay * durationDays
 
-    if (isTestMode && callsPerContact > 1) {
-      results.warnings.push(
-        `Mode test: ${contactCount} contacts × ${callsPerContact} appels = ${totalCalls} appels programmés aux 10 minutes.`
-      )
-    }
+    results.warnings.push(
+      `Campagne: ${contactCount} contacts × ${callsPerDay} appel(s)/jour × ${durationDays} jours = ${totalCalls} appels programmés.`
+    )
 
-    // Calculate scheduled times (wave-based in test mode)
-    const scheduledTimes = calculateScheduledTimes({
+    // Calculate scheduled times using multi-day scheduler
+    const scheduleResults = calculateMultiDaySchedule({
       campaign,
-      contactCount,
-      callsPerContact
+      contactCount
     })
 
-    // Create clients and scheduled calls
-    // In test mode with multiple calls: wave-based order
-    // Wave 1: contact[0], contact[1], ... contact[N-1]
-    // Wave 2: contact[0], contact[1], ... contact[N-1]
-    // Wave 3: ...
-    if (isTestMode && callsPerContact > 1) {
-      // First, create all clients
-      for (const contact of contactsToSchedule) {
-        try {
-          await createClient({
-            name: contact.name || 'Unknown',
-            phone: contact.phone,
-            campaignId,
-            isActive: true
-          })
-        } catch (err) {
-          // Client may already exist, continue
-        }
+    // First, create all clients
+    for (const contact of contactsToSchedule) {
+      try {
+        await createClient({
+          name: contact.name || 'Unknown',
+          phone: contact.phone,
+          campaignId,
+          isActive: true
+        })
+      } catch (err) {
+        // Client may already exist, continue
       }
+    }
 
-      // Then create calls wave by wave
-      for (let wave = 0; wave < callsPerContact; wave++) {
-        for (let i = 0; i < contactsToSchedule.length; i++) {
-          const contact = contactsToSchedule[i]
-          const timeIndex = wave * contactCount + i
-          const scheduledAt = scheduledTimes[timeIndex]
+    // Create scheduled calls based on multi-day schedule
+    // Schedule results are ordered by: day -> callNumber -> contactIndex
+    for (const scheduleItem of scheduleResults) {
+      const contact = contactsToSchedule[scheduleItem.contactIndex]
+      if (!contact) continue
 
-          try {
-            const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
-            const scheduledCall = await createScheduledCall({
-              campaignId,
-              clientId: undefined,
-              phone: contact.phone,
-              name: contact.name,
-              firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
-              fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
-              scheduledAt: scheduledAt.toISOString(),
-              status: 'pending',
-              retryCount: 0
-            })
+      try {
+        const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
+        const scheduledCall = await createScheduledCall({
+          campaignId,
+          clientId: undefined,
+          phone: contact.phone,
+          name: contact.name,
+          firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
+          fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
+          scheduledAt: scheduleItem.scheduledTime.toISOString(),
+          status: 'pending',
+          retryCount: 0
+        })
 
-            if (scheduledCall) {
-              results.added++
-            } else {
-              results.errors.push(`Failed to schedule call ${wave + 1} for ${contact.phone}`)
-              results.skipped++
-            }
-          } catch (err) {
-            results.errors.push(`Error processing call ${wave + 1} for ${contact.phone}: ${err}`)
-            results.skipped++
-          }
-        }
-      }
-    } else {
-      // Production mode or single call: one call per contact
-      for (let i = 0; i < contactsToSchedule.length; i++) {
-        const contact = contactsToSchedule[i]
-        const scheduledAt = scheduledTimes[i]
-
-        try {
-          // Create or update client
-          const client = await createClient({
-            name: contact.name || 'Unknown',
-            phone: contact.phone,
-            campaignId,
-            isActive: true
-          })
-
-          if (!client) {
-            results.errors.push(`Failed to create client for ${contact.phone}`)
-            results.skipped++
-            continue
-          }
-
-          // Create scheduled call with campaign messages (variables replaced with contact data)
-          const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
-          const scheduledCall = await createScheduledCall({
-            campaignId,
-            clientId: undefined, // Omit to avoid FK constraint with old clients table
-            phone: contact.phone,
-            name: contact.name,
-            firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
-            fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
-            scheduledAt: scheduledAt.toISOString(),
-            status: 'pending',
-            retryCount: 0
-          })
-
-          if (!scheduledCall) {
-            results.errors.push(`Failed to schedule call for ${contact.phone}`)
-            results.skipped++
-            continue
-          }
-
+        if (scheduledCall) {
           results.added++
-        } catch (err) {
-          results.errors.push(`Error processing ${contact.phone}: ${err}`)
+        } else {
+          results.errors.push(`Failed to schedule call day ${scheduleItem.dayNumber} for ${contact.phone}`)
           results.skipped++
         }
+      } catch (err) {
+        results.errors.push(`Error processing day ${scheduleItem.dayNumber} call for ${contact.phone}: ${err}`)
+        results.skipped++
       }
     }
 

@@ -8,8 +8,15 @@ const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frid
 interface ScheduleOptions {
   campaign: Campaign
   contactCount: number
-  callsPerContact?: number  // For test mode: number of calls per contact (default 1)
+  callsPerContact?: number  // DEPRECATED: Use campaign.callsPerDayPerContact and campaignDurationDays instead
   startFrom?: Date
+}
+
+interface MultiDayScheduleResult {
+  contactIndex: number
+  dayNumber: number      // Which day of the campaign (1-based)
+  callNumber: number     // Which call of the day for this contact (1-based)
+  scheduledTime: Date
 }
 
 /**
@@ -118,6 +125,110 @@ export function calculateScheduledTimes(options: ScheduleOptions): Date[] {
   }
 
   return scheduledTimes
+}
+
+/**
+ * Calculate scheduled times for multiple days
+ * Used for campaigns with callsPerDayPerContact and campaignDurationDays settings
+ *
+ * For each contact, schedules callsPerDayPerContact calls per day for campaignDurationDays
+ * Example: 5 contacts, 1 call/day, 5 days = 25 total scheduled calls
+ *
+ * @returns Array of MultiDayScheduleResult with scheduling metadata
+ */
+export function calculateMultiDaySchedule(options: ScheduleOptions): MultiDayScheduleResult[] {
+  const { campaign, contactCount, startFrom } = options
+
+  if (contactCount === 0) return []
+
+  const callsPerDay = campaign.callsPerDayPerContact ?? 1
+  const durationDays = campaign.campaignDurationDays ?? 5
+
+  const results: MultiDayScheduleResult[] = []
+  const now = startFrom || new Date()
+
+  // Convert call days to day numbers (0-6, Sunday-Saturday)
+  const allowedDays = campaign.callDays.map(day =>
+    DAY_NAMES.indexOf(day.toLowerCase())
+  ).filter(d => d !== -1)
+
+  if (allowedDays.length === 0) {
+    // Default to weekdays
+    allowedDays.push(1, 2, 3, 4, 5)
+  }
+
+  const startHour = campaign.callStartHour
+  const endHour = campaign.callEndHour
+  const windowMinutes = (endHour - startHour) * 60
+
+  // Calculate interval between contacts on the same day
+  // Leave some buffer at the end of the day
+  const totalCallsPerDay = contactCount * callsPerDay
+  const minutesBetweenCalls = Math.max(5, Math.floor((windowMinutes - 30) / Math.max(1, totalCallsPerDay)))
+
+  // Find valid campaign days
+  const campaignDays: Date[] = []
+  let searchDate = new Date(now)
+
+  // Find first valid day
+  searchDate = findNextValidTime(searchDate, allowedDays, startHour, endHour, campaign.timezone)
+
+  for (let dayIndex = 0; dayIndex < durationDays && campaignDays.length < 30; dayIndex++) {
+    // Check if this day is valid
+    const dayOfWeek = getDayInTimezone(searchDate, campaign.timezone)
+
+    if (allowedDays.includes(dayOfWeek)) {
+      // This is a valid campaign day
+      const dayStart = setHourInTimezone(searchDate, startHour, campaign.timezone)
+      campaignDays.push(dayStart)
+    } else {
+      // Not a valid day, don't count it but still search next day
+      dayIndex-- // Don't count this as a campaign day
+    }
+
+    // Move to next day
+    searchDate = addDays(searchDate, 1)
+    searchDate = setHourInTimezone(searchDate, startHour, campaign.timezone)
+
+    // Safety check to avoid infinite loop
+    if (campaignDays.length >= durationDays) break
+  }
+
+  // Now schedule calls for each campaign day
+  for (let dayIdx = 0; dayIdx < campaignDays.length; dayIdx++) {
+    const dayStart = campaignDays[dayIdx]
+    const dayNumber = dayIdx + 1
+
+    // For each contact, schedule callsPerDay calls on this day
+    for (let callNum = 1; callNum <= callsPerDay; callNum++) {
+      for (let contactIdx = 0; contactIdx < contactCount; contactIdx++) {
+        // Calculate offset: spread contacts and calls throughout the day
+        // First all contacts get call 1, then all get call 2, etc.
+        const callOffset = (callNum - 1) * contactCount + contactIdx
+        const minutesOffset = callOffset * minutesBetweenCalls
+
+        const scheduledTime = new Date(dayStart.getTime() + minutesOffset * 60 * 1000)
+
+        results.push({
+          contactIndex: contactIdx,
+          dayNumber,
+          callNumber: callNum,
+          scheduledTime
+        })
+      }
+    }
+  }
+
+  return results
+}
+
+/**
+ * Simple helper to get scheduled times from multi-day schedule
+ * Returns flat array of dates (for backward compatibility)
+ */
+export function calculateMultiDayTimes(options: ScheduleOptions): Date[] {
+  const schedule = calculateMultiDaySchedule(options)
+  return schedule.map(s => s.scheduledTime)
 }
 
 /**

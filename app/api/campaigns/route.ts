@@ -115,6 +115,24 @@ export async function POST(request: Request) {
       )
     }
 
+    // Validate calls per day per contact (1-5)
+    const callsPerDayPerContact = body.callsPerDayPerContact ?? 1
+    if (callsPerDayPerContact < 1 || callsPerDayPerContact > 5) {
+      return NextResponse.json(
+        { success: false, error: 'Calls per day per contact must be between 1 and 5' },
+        { status: 400 }
+      )
+    }
+
+    // Validate campaign duration days (1-10)
+    const campaignDurationDays = body.campaignDurationDays ?? 5
+    if (campaignDurationDays < 1 || campaignDurationDays > 10) {
+      return NextResponse.json(
+        { success: false, error: 'Campaign duration must be between 1 and 10 days' },
+        { status: 400 }
+      )
+    }
+
     const campaignData: Omit<Campaign, 'id' | 'createdAt' | 'updatedAt'> = {
       name: body.name,
       creatorEmail: body.creatorEmail,
@@ -129,7 +147,9 @@ export async function POST(request: Request) {
       recordingDisclosure: body.recordingDisclosure || 'Cet appel peut être enregistré à des fins de qualité.',
       firstMessage: body.firstMessage || null,
       fullPrompt: body.fullPrompt || null,
-      status: 'active'
+      status: 'active',
+      callsPerDayPerContact,
+      campaignDurationDays
     }
 
     const campaign = await createCampaign(campaignData)

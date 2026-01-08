@@ -30,6 +30,8 @@ export default function NewCampaignPage() {
   const [name, setName] = useState('')
   const [creatorEmail, setCreatorEmail] = useState('')
   const [mode, setMode] = useState<'production' | 'test'>('production')
+  const [callsPerDayPerContact, setCallsPerDayPerContact] = useState(1)
+  const [campaignDurationDays, setCampaignDurationDays] = useState(5)
   const [callDays, setCallDays] = useState<string[]>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday'])
   const [callStartHour, setCallStartHour] = useState(9)
   const [callEndHour, setCallEndHour] = useState(19)
@@ -119,6 +121,8 @@ export default function NewCampaignPage() {
           name: name.trim(),
           creatorEmail: creatorEmail.trim(),
           mode,
+          callsPerDayPerContact,
+          campaignDurationDays,
           callDays,
           callStartHour,
           callEndHour,
@@ -265,6 +269,52 @@ export default function NewCampaignPage() {
                   : 'Test mode: Calls will be scheduled every 10 minutes. Maximum 3 contacts per campaign.'}
               </p>
             )}
+          </div>
+
+          {/* Call Frequency */}
+          <div>
+            <label className="block text-sm font-medium mb-2">
+              {language === 'fr' ? 'Fréquence des appels' : 'Call Frequency'}
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">
+                  {language === 'fr' ? 'Appels par jour par contact' : 'Calls per day per contact'}
+                </label>
+                <select
+                  value={callsPerDayPerContact}
+                  onChange={(e) => setCallsPerDayPerContact(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n} {language === 'fr' ? (n === 1 ? 'appel' : 'appels') : (n === 1 ? 'call' : 'calls')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">
+                  {language === 'fr' ? 'Durée de la campagne (jours)' : 'Campaign duration (days)'}
+                </label>
+                <select
+                  value={campaignDurationDays}
+                  onChange={(e) => setCampaignDurationDays(parseInt(e.target.value))}
+                  className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
+                >
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                    <option key={n} value={n}>
+                      {n} {language === 'fr' ? (n === 1 ? 'jour' : 'jours') : (n === 1 ? 'day' : 'days')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-gray-400 text-sm mt-2">
+              {language === 'fr'
+                ? `Chaque contact sera appelé ${callsPerDayPerContact} fois par jour pendant ${campaignDurationDays} jours = ${callsPerDayPerContact * campaignDurationDays} appels par contact`
+                : `Each contact will be called ${callsPerDayPerContact} time(s) per day for ${campaignDurationDays} days = ${callsPerDayPerContact * campaignDurationDays} calls per contact`}
+            </p>
           </div>
 
           {/* First Message */}

@@ -49,6 +49,8 @@ export interface Campaign {
   firstMessage?: string
   fullPrompt?: string
   status: 'active' | 'paused' | 'completed'
+  callsPerDayPerContact: number  // NEW: How many times to call each contact per day
+  campaignDurationDays: number   // NEW: How many days the campaign runs
   createdAt: string
   updatedAt: string
 }
@@ -246,6 +248,12 @@ export async function initializeDatabase() {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'mode') THEN
           ALTER TABLE campaigns ADD COLUMN mode VARCHAR(20) DEFAULT 'production';
         END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'calls_per_day_per_contact') THEN
+          ALTER TABLE campaigns ADD COLUMN calls_per_day_per_contact INT DEFAULT 1;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'campaign_duration_days') THEN
+          ALTER TABLE campaigns ADD COLUMN campaign_duration_days INT DEFAULT 5;
+        END IF;
         -- Make slug column nullable if it exists (legacy column)
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'slug') THEN
           ALTER TABLE campaigns ALTER COLUMN slug DROP NOT NULL;
@@ -355,18 +363,21 @@ export async function createCampaign(campaign: Omit<Campaign, 'id' | 'createdAt'
   const result = await db`
     INSERT INTO campaigns (name, creator_email, mode, call_days, call_start_hour, call_end_hour,
                           timezone, priority, voicemail_action, voicemail_message,
-                          recording_disclosure, first_message, full_prompt, status)
+                          recording_disclosure, first_message, full_prompt, status,
+                          calls_per_day_per_contact, campaign_duration_days)
     VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.mode || 'production'}, ${campaign.callDays},
             ${campaign.callStartHour}, ${campaign.callEndHour}, ${campaign.timezone},
             ${campaign.priority}, ${campaign.voicemailAction}, ${campaign.voicemailMessage || null},
             ${campaign.recordingDisclosure}, ${campaign.firstMessage || null}, ${campaign.fullPrompt || null},
-            ${campaign.status})
+            ${campaign.status}, ${campaign.callsPerDayPerContact || 1}, ${campaign.campaignDurationDays || 5})
     RETURNING id, name, creator_email as "creatorEmail", mode, call_days as "callDays",
               call_start_hour as "callStartHour", call_end_hour as "callEndHour",
               timezone, priority, voicemail_action as "voicemailAction",
               voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
               first_message as "firstMessage", full_prompt as "fullPrompt",
-              status, created_at as "createdAt", updated_at as "updatedAt"
+              status, calls_per_day_per_contact as "callsPerDayPerContact",
+              campaign_duration_days as "campaignDurationDays",
+              created_at as "createdAt", updated_at as "updatedAt"
   `
   return result[0] as Campaign
 }
@@ -380,7 +391,9 @@ export async function getCampaigns(): Promise<Campaign[]> {
              timezone, priority, voicemail_action as "voicemailAction",
              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
              first_message as "firstMessage", full_prompt as "fullPrompt",
-             status, created_at as "createdAt", updated_at as "updatedAt"
+             status, COALESCE(calls_per_day_per_contact, 1) as "callsPerDayPerContact",
+             COALESCE(campaign_duration_days, 5) as "campaignDurationDays",
+             created_at as "createdAt", updated_at as "updatedAt"
       FROM campaigns
       ORDER BY created_at DESC
     `
@@ -400,7 +413,9 @@ export async function getCampaignById(id: string): Promise<Campaign | null> {
              timezone, priority, voicemail_action as "voicemailAction",
              voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
              first_message as "firstMessage", full_prompt as "fullPrompt",
-             status, created_at as "createdAt", updated_at as "updatedAt"
+             status, COALESCE(calls_per_day_per_contact, 1) as "callsPerDayPerContact",
+             COALESCE(campaign_duration_days, 5) as "campaignDurationDays",
+             created_at as "createdAt", updated_at as "updatedAt"
       FROM campaigns WHERE id = ${id}
     `
     return result.length > 0 ? result[0] as Campaign : null
@@ -427,6 +442,8 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>): Pr
         first_message = COALESCE(${updates.firstMessage || null}, first_message),
         full_prompt = COALESCE(${updates.fullPrompt || null}, full_prompt),
         status = COALESCE(${updates.status || null}, status),
+        calls_per_day_per_contact = COALESCE(${updates.callsPerDayPerContact ?? null}, calls_per_day_per_contact),
+        campaign_duration_days = COALESCE(${updates.campaignDurationDays ?? null}, campaign_duration_days),
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING id, name, creator_email as "creatorEmail", mode, call_days as "callDays",
@@ -434,7 +451,9 @@ export async function updateCampaign(id: string, updates: Partial<Campaign>): Pr
                 timezone, priority, voicemail_action as "voicemailAction",
                 voicemail_message as "voicemailMessage", recording_disclosure as "recordingDisclosure",
                 first_message as "firstMessage", full_prompt as "fullPrompt",
-                status, created_at as "createdAt", updated_at as "updatedAt"
+                status, COALESCE(calls_per_day_per_contact, 1) as "callsPerDayPerContact",
+                COALESCE(campaign_duration_days, 5) as "campaignDurationDays",
+                created_at as "createdAt", updated_at as "updatedAt"
     `
     return result.length > 0 ? result[0] as Campaign : null
   } catch (error) {
