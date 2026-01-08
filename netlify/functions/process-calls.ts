@@ -80,6 +80,54 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       }
     }
 
+    // Cleanup stuck calls (calling for more than 5 minutes without webhook response)
+    const stuckCalls = await sql`
+      SELECT sc.id, sc.phone, sc.name, cl.conversation_id as "conversationId"
+      FROM scheduled_calls sc
+      LEFT JOIN call_logs cl ON cl.scheduled_call_id = sc.id
+      WHERE sc.status = 'calling'
+      AND sc.updated_at < NOW() - INTERVAL '5 minutes'
+    `
+
+    for (const stuckCall of stuckCalls) {
+      let reason = 'Call timed out - no response from provider'
+
+      // Query ElevenLabs API to get real status
+      if (stuckCall.conversationId && process.env.ELEVENLABS_API_KEY) {
+        try {
+          const response = await fetch(
+            `https://api.elevenlabs.io/v1/convai/conversations/${stuckCall.conversationId}`,
+            { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }
+          )
+          if (response.ok) {
+            const data = await response.json()
+            console.log(`[ProcessCalls] ElevenLabs status for ${stuckCall.conversationId}:`, data.status, data.call?.status)
+
+            // Include ElevenLabs status in the reason
+            if (data.status || data.call?.status) {
+              reason = `ElevenLabs: ${data.status || data.call?.status}`
+              if (data.call?.termination_reason) {
+                reason += ` - ${data.call.termination_reason}`
+              }
+            }
+          }
+        } catch (err) {
+          console.error('[ProcessCalls] Error querying ElevenLabs:', err)
+        }
+      }
+
+      await sql`
+        UPDATE scheduled_calls
+        SET status = 'failed', skipped_reason = ${reason}, updated_at = NOW()
+        WHERE id = ${stuckCall.id}
+      `
+      console.log(`[ProcessCalls] Marked stuck call as failed: ${stuckCall.phone} - ${reason}`)
+    }
+
+    if (stuckCalls.length > 0) {
+      console.log(`[ProcessCalls] Cleaned up ${stuckCalls.length} stuck call(s)`)
+    }
+
     // Get next pending call
     const pendingCallResult = await sql`
       SELECT
