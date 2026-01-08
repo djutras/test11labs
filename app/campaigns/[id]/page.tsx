@@ -108,7 +108,8 @@ export default function CampaignDetailPage() {
           scheduledCallId,
           campaignId,
           firstMessage: campaign?.firstMessage || undefined,
-          fullPrompt: campaign?.fullPrompt || undefined
+          fullPrompt: campaign?.fullPrompt || undefined,
+          contactName: name || undefined
         })
       })
 
