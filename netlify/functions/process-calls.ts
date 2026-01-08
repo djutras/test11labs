@@ -8,8 +8,8 @@ import type { Handler, HandlerEvent, HandlerContext } from '@netlify/functions'
 import { neon } from '@neondatabase/serverless'
 
 const CALLING_HOURS = {
-  start: 9, // 9 AM
-  end: 19,  // 7 PM
+  start: 7, // 7 AM
+  end: 23,  // 11 PM (allowing evening calls)
   timezone: 'America/Toronto'
 }
 
@@ -54,14 +54,8 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
 
     console.log(`[ProcessCalls] Current time: ${estTime.toISOString()}, Hour: ${currentHour}, Day: ${dayOfWeek}`)
 
-    // Check if it's a weekday (Mon-Fri = 1-5)
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      console.log('[ProcessCalls] Weekend - skipping')
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Weekend - no calls scheduled' })
-      }
-    }
+    // Note: Weekend check removed - campaigns can now run on any day
+    // The campaign's callDays setting determines which days calls are made
 
     // Check if within business hours
     if (currentHour < CALLING_HOURS.start || currentHour >= CALLING_HOURS.end) {
