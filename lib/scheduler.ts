@@ -8,6 +8,7 @@ const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'frid
 interface ScheduleOptions {
   campaign: Campaign
   contactCount: number
+  callsPerContact?: number  // For test mode: number of calls per contact (default 1)
   startFrom?: Date
 }
 
@@ -15,28 +16,29 @@ interface ScheduleOptions {
  * Calculate scheduled times for a batch of contacts
  * Spreads calls evenly across allowed hours and days
  *
- * In TEST mode:
- * - Fixed 10-minute intervals
- * - Maximum 3 contacts
+ * In TEST mode with callsPerContact > 1:
+ * - Wave-based scheduling: all contacts get call 1, then all get call 2, etc.
+ * - 10-minute intervals between waves
+ * - 1-minute intervals between contacts within a wave
+ * - Starts immediately
+ *
+ * In TEST mode with callsPerContact = 1:
+ * - Fixed 10-minute intervals between contacts
+ * - Starts immediately
  *
  * In PRODUCTION mode:
  * - 15-30 minute random intervals
  * - No contact limit
  */
 export function calculateScheduledTimes(options: ScheduleOptions): Date[] {
-  const { campaign, startFrom } = options
-  let { contactCount } = options
-
-  // TEST MODE: Limit to 3 contacts and use 10-minute intervals
-  const isTestMode = campaign.mode === 'test'
-  if (isTestMode) {
-    contactCount = Math.min(contactCount, 3)
-  }
+  const { campaign, startFrom, callsPerContact = 1 } = options
+  const { contactCount } = options
 
   if (contactCount === 0) return []
 
   const scheduledTimes: Date[] = []
   const now = startFrom || new Date()
+  const isTestMode = campaign.mode === 'test'
 
   // Convert call days to day numbers (0-6, Sunday-Saturday)
   const allowedDays = campaign.callDays.map(day =>
@@ -53,20 +55,35 @@ export function calculateScheduledTimes(options: ScheduleOptions): Date[] {
   const endHour = campaign.callEndHour
   const windowMinutes = (endHour - startHour) * 60
 
-  // Calculate interval between calls
-  // TEST MODE: Fixed 10-minute intervals
-  // PRODUCTION: minimum 15 minutes, spread evenly
-  const baseInterval = isTestMode ? 10 : 15
-  const slotsPerDay = Math.floor(windowMinutes / baseInterval)
-  const daysNeeded = Math.ceil(contactCount / slotsPerDay)
-
   // Find the first valid start time
   let currentDate = new Date(now)
 
-  // In test mode, start immediately (don't wait for next valid window if not needed)
+  // In test mode, start immediately (don't wait for next valid window)
   if (!isTestMode) {
     currentDate = findNextValidTime(currentDate, allowedDays, startHour, endHour, campaign.timezone)
   }
+
+  // TEST MODE with multiple calls per contact: Wave-based scheduling
+  if (isTestMode && callsPerContact > 1) {
+    const waveIntervalMinutes = 10  // 10 minutes between waves
+    const contactIntervalMinutes = 1  // 1 minute between contacts in same wave
+
+    // Schedule wave by wave
+    for (let wave = 0; wave < callsPerContact; wave++) {
+      const waveStartTime = new Date(currentDate.getTime() + wave * waveIntervalMinutes * 60 * 1000)
+
+      for (let contactIndex = 0; contactIndex < contactCount; contactIndex++) {
+        const scheduledTime = new Date(waveStartTime.getTime() + contactIndex * contactIntervalMinutes * 60 * 1000)
+        scheduledTimes.push(scheduledTime)
+      }
+    }
+
+    return scheduledTimes
+  }
+
+  // PRODUCTION or TEST mode with single call per contact
+  const baseInterval = isTestMode ? 10 : 15
+  const slotsPerDay = Math.floor(windowMinutes / baseInterval)
 
   // Schedule each contact
   for (let i = 0; i < contactCount; i++) {

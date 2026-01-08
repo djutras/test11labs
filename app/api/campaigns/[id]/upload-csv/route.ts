@@ -136,67 +136,124 @@ export async function POST(request: Request, { params }: RouteParams) {
       }
     }
 
-    // TEST MODE: Limit to 3 contacts
+    // TEST MODE: Multiple calls per contact (wave-based scheduling)
     const isTestMode = campaign.mode === 'test'
-    let testModeSkipped = 0
-    if (isTestMode && contactsToSchedule.length > 3) {
-      testModeSkipped = contactsToSchedule.length - 3
+    const callsPerContact = isTestMode ? 3 : 1  // 3 calls per contact in test mode
+    const contactCount = contactsToSchedule.length
+    const totalCalls = contactCount * callsPerContact
+
+    if (isTestMode && callsPerContact > 1) {
       results.warnings.push(
-        `Mode test: Seulement 3 contacts seront programmés. ${testModeSkipped} contact(s) ignoré(s).`
+        `Mode test: ${contactCount} contacts × ${callsPerContact} appels = ${totalCalls} appels programmés aux 10 minutes.`
       )
-      contactsToSchedule = contactsToSchedule.slice(0, 3)
     }
 
-    // Calculate scheduled times
+    // Calculate scheduled times (wave-based in test mode)
     const scheduledTimes = calculateScheduledTimes({
       campaign,
-      contactCount: contactsToSchedule.length
+      contactCount,
+      callsPerContact
     })
 
     // Create clients and scheduled calls
-    for (let i = 0; i < contactsToSchedule.length; i++) {
-      const contact = contactsToSchedule[i]
-      const scheduledAt = scheduledTimes[i]
-
-      try {
-        // Create or update client
-        const client = await createClient({
-          name: contact.name || 'Unknown',
-          phone: contact.phone,
-          campaignId,
-          isActive: true
-        })
-
-        if (!client) {
-          results.errors.push(`Failed to create client for ${contact.phone}`)
-          results.skipped++
-          continue
+    // In test mode with multiple calls: wave-based order
+    // Wave 1: contact[0], contact[1], ... contact[N-1]
+    // Wave 2: contact[0], contact[1], ... contact[N-1]
+    // Wave 3: ...
+    if (isTestMode && callsPerContact > 1) {
+      // First, create all clients
+      for (const contact of contactsToSchedule) {
+        try {
+          await createClient({
+            name: contact.name || 'Unknown',
+            phone: contact.phone,
+            campaignId,
+            isActive: true
+          })
+        } catch (err) {
+          // Client may already exist, continue
         }
+      }
 
-        // Create scheduled call with campaign messages (variables replaced with contact data)
-        const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
-        const scheduledCall = await createScheduledCall({
-          campaignId,
-          clientId: undefined, // Omit to avoid FK constraint with old clients table
-          phone: contact.phone,
-          name: contact.name,
-          firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
-          fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
-          scheduledAt: scheduledAt.toISOString(),
-          status: 'pending',
-          retryCount: 0
-        })
+      // Then create calls wave by wave
+      for (let wave = 0; wave < callsPerContact; wave++) {
+        for (let i = 0; i < contactsToSchedule.length; i++) {
+          const contact = contactsToSchedule[i]
+          const timeIndex = wave * contactCount + i
+          const scheduledAt = scheduledTimes[timeIndex]
 
-        if (!scheduledCall) {
-          results.errors.push(`Failed to schedule call for ${contact.phone}`)
-          results.skipped++
-          continue
+          try {
+            const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
+            const scheduledCall = await createScheduledCall({
+              campaignId,
+              clientId: undefined,
+              phone: contact.phone,
+              name: contact.name,
+              firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
+              fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
+              scheduledAt: scheduledAt.toISOString(),
+              status: 'pending',
+              retryCount: 0
+            })
+
+            if (scheduledCall) {
+              results.added++
+            } else {
+              results.errors.push(`Failed to schedule call ${wave + 1} for ${contact.phone}`)
+              results.skipped++
+            }
+          } catch (err) {
+            results.errors.push(`Error processing call ${wave + 1} for ${contact.phone}: ${err}`)
+            results.skipped++
+          }
         }
+      }
+    } else {
+      // Production mode or single call: one call per contact
+      for (let i = 0; i < contactsToSchedule.length; i++) {
+        const contact = contactsToSchedule[i]
+        const scheduledAt = scheduledTimes[i]
 
-        results.added++
-      } catch (err) {
-        results.errors.push(`Error processing ${contact.phone}: ${err}`)
-        results.skipped++
+        try {
+          // Create or update client
+          const client = await createClient({
+            name: contact.name || 'Unknown',
+            phone: contact.phone,
+            campaignId,
+            isActive: true
+          })
+
+          if (!client) {
+            results.errors.push(`Failed to create client for ${contact.phone}`)
+            results.skipped++
+            continue
+          }
+
+          // Create scheduled call with campaign messages (variables replaced with contact data)
+          const contactData = { name: contact.name, phone: contact.phone, subject: contact.subject }
+          const scheduledCall = await createScheduledCall({
+            campaignId,
+            clientId: undefined, // Omit to avoid FK constraint with old clients table
+            phone: contact.phone,
+            name: contact.name,
+            firstMessage: replaceVariables(campaign.firstMessage, contactData) || undefined,
+            fullPrompt: replaceVariables(campaign.fullPrompt, contactData) || undefined,
+            scheduledAt: scheduledAt.toISOString(),
+            status: 'pending',
+            retryCount: 0
+          })
+
+          if (!scheduledCall) {
+            results.errors.push(`Failed to schedule call for ${contact.phone}`)
+            results.skipped++
+            continue
+          }
+
+          results.added++
+        } catch (err) {
+          results.errors.push(`Error processing ${contact.phone}: ${err}`)
+          results.skipped++
+        }
       }
     }
 
