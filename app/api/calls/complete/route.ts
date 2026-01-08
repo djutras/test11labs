@@ -8,7 +8,8 @@ import {
   getCallLogById,
   getCampaignById,
   getClientById,
-  createCallLog
+  createCallLog,
+  getClientFutureCallsByPhone
 } from '@/lib/db'
 
 // POST /api/calls/complete
@@ -118,26 +119,54 @@ export async function POST(request: Request) {
       })
     }
 
-    // Send email notification
+    // Send email notification only if there were actual exchanges
     if (campaignId && outcome !== 'failed') {
-      try {
-        const emailSent = await sendEmailNotification({
-          campaignId,
-          phone: body.phone,
-          clientName: body.clientName,
-          outcome,
-          duration,
-          transcript,
-          audioUrl,
-          conversationId
-        })
+      if (!hasValidTranscriptExchanges(transcript)) {
+        console.log('[CallComplete] Skipping email - no valid transcript exchanges (no user response)')
+      } else {
+        try {
+          const emailSent = await sendEmailNotification({
+            campaignId,
+            phone: body.phone,
+            clientName: body.clientName,
+            outcome,
+            duration,
+            transcript,
+            audioUrl,
+            conversationId
+          })
 
-        // Update email_sent flag in call_log
-        if (emailSent && callLogId) {
-          await updateCallLog(callLogId, { emailSent: true })
+          // Update email_sent flag in call_log
+          if (emailSent && callLogId) {
+            await updateCallLog(callLogId, { emailSent: true })
+          }
+
+          // Pause other pending calls for this prospect since we had a valid exchange
+          if (emailSent && body.phone) {
+            try {
+              const futureData = await getClientFutureCallsByPhone(campaignId, body.phone)
+              if (futureData?.futureCalls) {
+                let pausedCount = 0
+                for (const call of futureData.futureCalls) {
+                  if (call.status === 'pending') {
+                    await updateScheduledCall(call.id, {
+                      status: 'paused',
+                      skippedReason: 'Paused - email sent after successful exchange'
+                    })
+                    pausedCount++
+                  }
+                }
+                if (pausedCount > 0) {
+                  console.log(`[CallComplete] Paused ${pausedCount} pending calls for ${body.phone}`)
+                }
+              }
+            } catch (pauseErr) {
+              console.error('[CallComplete] Error pausing future calls:', pauseErr)
+            }
+          }
+        } catch (err) {
+          console.error('[CallComplete] Error sending email:', err)
         }
-      } catch (err) {
-        console.error('[CallComplete] Error sending email:', err)
       }
     }
 
@@ -160,6 +189,24 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+}
+
+// Helper function to check if transcript has valid exchanges (user + agent messages)
+function hasValidTranscriptExchanges(transcript: any): boolean {
+  let messages: any[] = [];
+
+  if (Array.isArray(transcript)) {
+    messages = transcript;
+  } else if (transcript?.transcript && Array.isArray(transcript.transcript)) {
+    messages = transcript.transcript;
+  }
+
+  if (messages.length < 2) return false;
+
+  const hasUserMessage = messages.some(t => t.role === 'user' && t.message?.trim());
+  const hasAgentMessage = messages.some(t => t.role === 'agent' && t.message?.trim());
+
+  return hasUserMessage && hasAgentMessage;
 }
 
 // Helper function to send email notification
@@ -199,6 +246,9 @@ async function sendEmailNotification(params: {
     : 'Unknown'
 
   // Build email content
+  const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
+  const reactivateUrl = `${baseUrl}/api/campaigns/${params.campaignId}/reactivate-client/${encodeURIComponent(params.phone || '')}`
+
   const emailSubject = `[${campaign.name}] Call ${params.outcome}: ${params.clientName || params.phone}`
   const emailBody = `
 Call Completed
@@ -215,7 +265,8 @@ Transcript:
 ${transcriptText}
 
 ---
-View in dashboard: ${process.env.URL || process.env.DEPLOY_URL}/campaigns/${params.campaignId}
+Réactiver les appels pour ce client: ${reactivateUrl}
+View in dashboard: ${baseUrl}/campaigns/${params.campaignId}
 `
 
   // Send email using SendGrid

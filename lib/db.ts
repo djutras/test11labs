@@ -64,7 +64,7 @@ export interface ScheduledCall {
   firstMessage?: string
   fullPrompt?: string
   scheduledAt: string
-  status: 'pending' | 'calling' | 'in_progress' | 'completed' | 'answered' | 'voicemail' | 'no_answer' | 'busy' | 'invalid' | 'failed' | 'skipped' | 'dnc'
+  status: 'pending' | 'calling' | 'in_progress' | 'completed' | 'answered' | 'voicemail' | 'no_answer' | 'busy' | 'invalid' | 'failed' | 'skipped' | 'dnc' | 'paused'
   retryCount: number
   skippedReason?: string
   createdAt: string
