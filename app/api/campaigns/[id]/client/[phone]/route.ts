@@ -62,8 +62,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         name = COALESCE(${updates.name || null}, name),
         phone = COALESCE(${updates.newPhone || null}, phone),
         first_message = COALESCE(${updates.firstMessage || null}, first_message),
-        full_prompt = COALESCE(${updates.fullPrompt || null}, full_prompt),
-        updated_at = NOW()
+        full_prompt = COALESCE(${updates.fullPrompt || null}, full_prompt)
       WHERE campaign_id = ${campaignId} AND phone = ${decodedPhone}
       RETURNING id
     `

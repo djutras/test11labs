@@ -5,7 +5,7 @@ import { neon, NeonQueryFunction } from '@neondatabase/serverless'
 
 let sql: NeonQueryFunction<false, false> | null = null
 
-function getDb() {
+export function getDb() {
   if (!sql) {
     if (!process.env.DATABASE_URL) {
       throw new Error('DATABASE_URL is not set')
