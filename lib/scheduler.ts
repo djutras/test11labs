@@ -124,6 +124,21 @@ export function calculateScheduledTimes(options: ScheduleOptions): Date[] {
     }
   }
 
+  // Ensure minimum 5-minute gap between consecutive calls
+  const MIN_GAP_MINUTES = 5
+  scheduledTimes.sort((a, b) => a.getTime() - b.getTime())
+
+  for (let i = 1; i < scheduledTimes.length; i++) {
+    const prevTime = scheduledTimes[i - 1].getTime()
+    const currTime = scheduledTimes[i].getTime()
+    const gapMinutes = (currTime - prevTime) / (1000 * 60)
+
+    if (gapMinutes < MIN_GAP_MINUTES) {
+      // Shift this call to ensure minimum gap
+      scheduledTimes[i] = new Date(prevTime + MIN_GAP_MINUTES * 60 * 1000)
+    }
+  }
+
   return scheduledTimes
 }
 
@@ -216,6 +231,21 @@ export function calculateMultiDaySchedule(options: ScheduleOptions): MultiDaySch
           scheduledTime
         })
       }
+    }
+  }
+
+  // Ensure minimum 5-minute gap between consecutive calls
+  const MIN_GAP_MINUTES = 5
+  results.sort((a, b) => a.scheduledTime.getTime() - b.scheduledTime.getTime())
+
+  for (let i = 1; i < results.length; i++) {
+    const prevTime = results[i - 1].scheduledTime.getTime()
+    const currTime = results[i].scheduledTime.getTime()
+    const gapMinutes = (currTime - prevTime) / (1000 * 60)
+
+    if (gapMinutes < MIN_GAP_MINUTES) {
+      // Shift this call to ensure minimum gap
+      results[i].scheduledTime = new Date(prevTime + MIN_GAP_MINUTES * 60 * 1000)
     }
   }
 

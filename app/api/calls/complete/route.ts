@@ -57,13 +57,6 @@ export async function POST(request: Request) {
         finalStatus = 'completed'
     }
 
-    // Update scheduled call status
-    if (scheduledCallId) {
-      await updateScheduledCall(scheduledCallId, {
-        status: finalStatus as any
-      })
-    }
-
     // Fetch transcript from ElevenLabs if we have a conversation ID
     let transcript = null
     let audioUrl = null
@@ -87,6 +80,17 @@ export async function POST(request: Request) {
           const transcriptData = await transcriptResponse.json()
           transcript = transcriptData.transcript || transcriptData
           console.log(`[CallComplete] Fetched transcript with ${Array.isArray(transcript) ? transcript.length : 0} messages`)
+
+          // Detect voicemail from transcript patterns
+          const detectedOutcome = detectVoicemailFromTranscript(transcript, finalStatus)
+          if (detectedOutcome !== finalStatus) {
+            console.log(`[CallComplete] Outcome changed from '${finalStatus}' to '${detectedOutcome}' based on transcript analysis`)
+            finalStatus = detectedOutcome
+            // Update shouldRetry flag for voicemail
+            if (detectedOutcome === 'voicemail') {
+              shouldRetry = true
+            }
+          }
         } else {
           console.error(`[CallComplete] Failed to fetch transcript: ${transcriptResponse.status}`)
         }
@@ -99,11 +103,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Update or create call log
+    // Update scheduled call status with potentially modified outcome
+    if (scheduledCallId && finalStatus) {
+      await updateScheduledCall(scheduledCallId, {
+        status: finalStatus as any
+      })
+    }
+
+    // Update or create call log (use finalStatus which may have been updated by voicemail detection)
     if (callLogId) {
       await updateCallLog(callLogId, {
         duration,
-        outcome: outcome as any,
+        outcome: finalStatus as any,
         transcript: transcript || undefined,
         audioUrl: audioUrl || undefined
       })
@@ -117,7 +128,7 @@ export async function POST(request: Request) {
         direction: 'outbound',
         phone: body.phone || '',
         duration,
-        outcome: outcome as any,
+        outcome: finalStatus as any,
         transcript: transcript || undefined,
         audioUrl: audioUrl || undefined,
         reviewStatus: 'pending',
@@ -138,7 +149,7 @@ export async function POST(request: Request) {
             campaignId,
             phone: body.phone,
             clientName: body.clientName,
-            outcome,
+            outcome: finalStatus,
             duration,
             transcript,
             audioUrl,
@@ -198,6 +209,66 @@ export async function POST(request: Request) {
       { status: 500 }
     )
   }
+}
+
+// Helper function to detect voicemail from transcript patterns
+function detectVoicemailFromTranscript(transcript: any, currentOutcome: string): string {
+  // Ne pas changer si déjà voicemail, no_answer, ou failed
+  if (currentOutcome !== 'answered') return currentOutcome;
+
+  let messages: any[] = [];
+  if (Array.isArray(transcript)) {
+    messages = transcript;
+  } else if (transcript?.transcript && Array.isArray(transcript.transcript)) {
+    messages = transcript.transcript;
+  }
+
+  if (messages.length === 0) return currentOutcome;
+
+  // Patterns de boîte vocale (français et anglais)
+  const voicemailPatterns = [
+    /laissez[- ]?(nous |un )?votre (nom|message|numéro)/i,
+    /laissez[- ]?(nous )?un message/i,
+    /toutes nos lignes sont occupées/i,
+    /nous vous rappellerons/i,
+    /après le bip/i,
+    /boîte vocale/i,
+    /messagerie vocale/i,
+    /veuillez laisser/i,
+    /at the tone|leave (a |your )?message/i,
+    /please leave your (name|number|message)/i,
+    /we will (call|get back to) you/i,
+    /all (our )?lines are (busy|occupied)/i
+  ];
+
+  // Vérifier si un message utilisateur contient un pattern de voicemail
+  const userMessages = messages.filter(m => m.role === 'user' && m.message?.trim());
+
+  for (const msg of userMessages) {
+    const text = msg.message || '';
+    for (const pattern of voicemailPatterns) {
+      if (pattern.test(text)) {
+        console.log(`[CallComplete] Voicemail detected - pattern matched: "${text.substring(0, 50)}..."`)
+        return 'voicemail';
+      }
+    }
+  }
+
+  // Vérifier si l'utilisateur n'a jamais vraiment répondu (seulement "..." ou silence)
+  const realUserResponses = userMessages.filter(m => {
+    const text = (m.message || '').trim();
+    // Une vraie réponse est plus de 5 caractères et n'est pas juste "..."
+    return text && text !== '...' && text.length > 5;
+  });
+
+  // Si aucune vraie réponse utilisateur mais l'agent a parlé plusieurs fois
+  const agentMessages = messages.filter(m => m.role === 'agent' && m.message?.trim());
+  if (realUserResponses.length === 0 && agentMessages.length >= 2) {
+    console.log(`[CallComplete] Voicemail detected - no real user response (${userMessages.length} user msgs, ${agentMessages.length} agent msgs)`)
+    return 'voicemail';
+  }
+
+  return currentOutcome;
 }
 
 // Helper function to check if transcript has valid exchanges (user + agent messages)
