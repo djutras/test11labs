@@ -1,0 +1,155 @@
+// app/api/cron/process-calls/route.ts
+// API endpoint to process pending calls - can be called by external cron service
+
+import { NextResponse } from 'next/server'
+import { neon } from '@neondatabase/serverless'
+
+const CALLING_HOURS = {
+  start: 7,
+  end: 23,
+  timezone: 'America/Toronto'
+}
+
+export async function GET(request: Request) {
+  // Optional: Add a secret key for security
+  const authHeader = request.headers.get('authorization')
+  const cronSecret = process.env.CRON_SECRET
+
+  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    console.log('[Cron] Unauthorized request')
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  console.log('[Cron] Processing pending calls...')
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: 'DATABASE_URL not configured' }, { status: 500 })
+    }
+
+    const sql = neon(process.env.DATABASE_URL)
+
+    // Check if within calling hours
+    const now = new Date()
+    const estTime = new Date(now.toLocaleString('en-US', { timeZone: CALLING_HOURS.timezone }))
+    const currentHour = estTime.getHours()
+
+    if (currentHour < CALLING_HOURS.start || currentHour >= CALLING_HOURS.end) {
+      console.log(`[Cron] Outside calling hours (${CALLING_HOURS.start}-${CALLING_HOURS.end})`)
+      return NextResponse.json({ message: 'Outside calling hours', hour: currentHour })
+    }
+
+    // Check if any call is in progress
+    const inProgressResult = await sql`
+      SELECT COUNT(*) as count FROM scheduled_calls WHERE status IN ('in_progress', 'calling')
+    `
+    const inProgressCount = Number(inProgressResult[0]?.count || 0)
+
+    if (inProgressCount > 0) {
+      console.log('[Cron] Call already in progress, waiting')
+      return NextResponse.json({ message: 'Call in progress, waiting', count: inProgressCount })
+    }
+
+    // Cleanup stuck calls (calling for more than 5 minutes)
+    const stuckCalls = await sql`
+      UPDATE scheduled_calls
+      SET status = 'failed', skipped_reason = 'Timeout - no webhook response'
+      WHERE status = 'calling'
+      AND (updated_at IS NULL OR updated_at < NOW() - INTERVAL '5 minutes')
+      RETURNING id, phone
+    `
+
+    if (stuckCalls.length > 0) {
+      console.log(`[Cron] Cleaned up ${stuckCalls.length} stuck call(s)`)
+    }
+
+    // Get next pending call
+    const pendingCallResult = await sql`
+      SELECT
+        sc.id, sc.campaign_id as "campaignId", sc.phone, sc.name,
+        sc.first_message as "firstMessage", sc.full_prompt as "fullPrompt",
+        c.recording_disclosure as "recordingDisclosure"
+      FROM scheduled_calls sc
+      JOIN campaigns c ON sc.campaign_id = c.id
+      WHERE sc.status = 'pending'
+        AND sc.scheduled_at <= NOW()
+        AND c.status = 'active'
+      ORDER BY c.priority DESC, sc.scheduled_at ASC
+      LIMIT 1
+    `
+
+    if (pendingCallResult.length === 0) {
+      console.log('[Cron] No pending calls')
+      return NextResponse.json({ message: 'No pending calls' })
+    }
+
+    const call = pendingCallResult[0]
+    console.log(`[Cron] Found call to process: ${call.id}, phone: ${call.phone}`)
+
+    // Check DNC list
+    const dncResult = await sql`
+      SELECT COUNT(*) as count FROM dnc_list
+      WHERE (phone = ${call.phone}
+             OR phone = ${call.phone.replace('+1', '')}
+             OR phone = ${'+1' + call.phone.replace('+1', '')})
+        AND (campaign_id IS NULL OR campaign_id = ${call.campaignId})
+    `
+    const isDnc = Number(dncResult[0]?.count || 0) > 0
+
+    if (isDnc) {
+      console.log(`[Cron] Phone ${call.phone} is on DNC list, skipping`)
+      await sql`
+        UPDATE scheduled_calls SET status = 'dnc', skipped_reason = 'On DNC list'
+        WHERE id = ${call.id}
+      `
+      return NextResponse.json({ message: 'Phone on DNC, skipped' })
+    }
+
+    // Mark call as in progress
+    await sql`
+      UPDATE scheduled_calls SET status = 'in_progress', updated_at = NOW() WHERE id = ${call.id}
+    `
+
+    // Prepare the first message with recording disclosure
+    const firstMessageWithDisclosure = call.recordingDisclosure
+      ? `${call.recordingDisclosure} ${call.firstMessage || ''}`
+      : call.firstMessage || ''
+
+    // Make the outbound call via our API
+    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
+    const callResponse = await fetch(`${baseUrl}/api/outbound-call`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phoneNumber: call.phone,
+        firstMessage: firstMessageWithDisclosure,
+        fullPrompt: call.fullPrompt || '',
+        scheduledCallId: call.id,
+        campaignId: call.campaignId,
+        contactName: call.name || ''
+      })
+    })
+
+    const callResult = await callResponse.json()
+
+    if (callResult.success) {
+      console.log(`[Cron] Call initiated: ${callResult.callSid}`)
+      return NextResponse.json({
+        message: 'Call initiated',
+        phone: call.phone,
+        name: call.name,
+        callSid: callResult.callSid
+      })
+    } else {
+      console.error(`[Cron] Failed to initiate call: ${callResult.error}`)
+      await sql`
+        UPDATE scheduled_calls SET status = 'failed', skipped_reason = ${callResult.error || 'Unknown error'}
+        WHERE id = ${call.id}
+      `
+      return NextResponse.json({ error: 'Failed to initiate call', details: callResult.error }, { status: 500 })
+    }
+  } catch (error) {
+    console.error('[Cron] Error:', error)
+    return NextResponse.json({ error: 'Internal error', details: String(error) }, { status: 500 })
+  }
+}
