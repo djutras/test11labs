@@ -43,18 +43,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Outside calling hours', hour: currentHour })
     }
 
-    // Check if any call is in progress
-    const inProgressResult = await sql`
-      SELECT COUNT(*) as count FROM scheduled_calls WHERE status IN ('in_progress', 'calling')
-    `
-    const inProgressCount = Number(inProgressResult[0]?.count || 0)
-
-    if (inProgressCount > 0) {
-      console.log('[Cron] Call already in progress, waiting')
-      return NextResponse.json({ message: 'Call in progress, waiting', count: inProgressCount })
-    }
-
-    // Cleanup stuck calls (calling for more than 5 minutes)
+    // IMPORTANT: Cleanup stuck calls FIRST (before checking in_progress)
+    // This fixes the bug where stuck calls would block all future calls forever
     const stuckCalls = await sql`
       UPDATE scheduled_calls
       SET status = 'failed', skipped_reason = 'Timeout - no webhook response'
@@ -65,6 +55,17 @@ export async function GET(request: Request) {
 
     if (stuckCalls.length > 0) {
       console.log(`[Cron] Cleaned up ${stuckCalls.length} stuck call(s)`)
+    }
+
+    // Check if any call is in progress (after cleanup)
+    const inProgressResult = await sql`
+      SELECT COUNT(*) as count FROM scheduled_calls WHERE status IN ('in_progress', 'calling')
+    `
+    const inProgressCount = Number(inProgressResult[0]?.count || 0)
+
+    if (inProgressCount > 0) {
+      console.log('[Cron] Call already in progress, waiting')
+      return NextResponse.json({ message: 'Call in progress, waiting', count: inProgressCount })
     }
 
     // Get next pending call
