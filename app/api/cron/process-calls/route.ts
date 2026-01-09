@@ -6,7 +6,7 @@ import { neon } from '@neondatabase/serverless'
 
 const CALLING_HOURS = {
   start: 7,
-  end: 23,
+  end: 24, // Minuit
   timezone: 'America/Toronto'
 }
 
