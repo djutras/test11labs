@@ -43,18 +43,78 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'Outside calling hours', hour: currentHour })
     }
 
-    // IMPORTANT: Cleanup stuck calls FIRST (before checking in_progress)
+    // IMPORTANT: Process stuck calls FIRST (before checking in_progress)
     // This fixes the bug where stuck calls would block all future calls forever
+    // Instead of just marking as failed, we do full processing via /api/calls/complete
     const stuckCalls = await sql`
-      UPDATE scheduled_calls
-      SET status = 'failed', skipped_reason = 'Timeout - no webhook response'
-      WHERE status = 'calling'
-      AND (updated_at IS NULL OR updated_at < NOW() - INTERVAL '5 minutes')
-      RETURNING id, phone
+      SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId",
+             cl.conversation_id as "conversationId", cl.id as "callLogId"
+      FROM scheduled_calls sc
+      LEFT JOIN call_logs cl ON cl.scheduled_call_id = sc.id
+      WHERE sc.status = 'calling'
+      AND sc.updated_at < NOW() - INTERVAL '5 minutes'
     `
 
+    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
+
+    for (const stuckCall of stuckCalls) {
+      let outcome: 'answered' | 'failed' = 'failed'
+      let duration = 0
+
+      // Query ElevenLabs API to get real status
+      if (stuckCall.conversationId && process.env.ELEVENLABS_API_KEY) {
+        try {
+          const response = await fetch(
+            `https://api.elevenlabs.io/v1/convai/conversations/${stuckCall.conversationId}`,
+            { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }
+          )
+          if (response.ok) {
+            const data = await response.json()
+            console.log(`[Cron] ElevenLabs status for ${stuckCall.conversationId}:`, data.status, data.call?.status)
+
+            // Determine outcome based on ElevenLabs status
+            if (data.status === 'done' || data.call?.status === 'ended') {
+              outcome = 'answered'
+            }
+            duration = data.metadata?.call_duration_secs || data.call?.duration_secs || 0
+          }
+        } catch (err) {
+          console.error('[Cron] Error querying ElevenLabs:', err)
+        }
+      }
+
+      // Call /api/calls/complete for full processing (transcript, voicemail detection, email)
+      try {
+        console.log(`[Cron] Fallback processing for ${stuckCall.phone}`)
+        const completeResponse = await fetch(`${baseUrl}/api/calls/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scheduledCallId: stuckCall.id,
+            campaignId: stuckCall.campaignId,
+            conversationId: stuckCall.conversationId,
+            callLogId: stuckCall.callLogId,
+            duration,
+            outcome,
+            phone: stuckCall.phone,
+            clientName: stuckCall.name
+          })
+        })
+        const result = await completeResponse.json()
+        console.log(`[Cron] Fallback processed: ${stuckCall.phone} - status: ${result.status}`)
+      } catch (err) {
+        console.error('[Cron] Fallback error:', err)
+        // If fallback fails, mark as failed directly
+        await sql`
+          UPDATE scheduled_calls
+          SET status = 'failed', skipped_reason = 'Fallback processing failed', updated_at = NOW()
+          WHERE id = ${stuckCall.id}
+        `
+      }
+    }
+
     if (stuckCalls.length > 0) {
-      console.log(`[Cron] Cleaned up ${stuckCalls.length} stuck call(s)`)
+      console.log(`[Cron] Processed ${stuckCalls.length} stuck call(s) via fallback`)
     }
 
     // Check if any call is in progress (after cleanup)
@@ -121,7 +181,6 @@ export async function GET(request: Request) {
       : call.firstMessage || ''
 
     // Make the outbound call via our API
-    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
     const callResponse = await fetch(`${baseUrl}/api/outbound-call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
