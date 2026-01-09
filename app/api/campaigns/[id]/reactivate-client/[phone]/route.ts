@@ -2,7 +2,7 @@
 // Reactivate paused calls for a specific client
 
 import { NextResponse } from 'next/server'
-import { getCampaignById, updateScheduledCall, getDb } from '@/lib/db'
+import { getCampaignById, getDb } from '@/lib/db'
 
 // GET /api/campaigns/[campaignId]/reactivate-client/[phone]
 // Reactivates paused calls and shows confirmation page
@@ -56,13 +56,14 @@ export async function GET(
 
     const clientName = pausedCalls[0]?.name || phone
 
-    // Reactivate all paused calls
-    for (const call of pausedCalls) {
-      await updateScheduledCall(call.id, {
-        status: 'pending',
-        skippedReason: undefined
-      })
-    }
+    // Reactivate all paused calls - use direct SQL to clear skipped_reason
+    await db`
+      UPDATE scheduled_calls
+      SET status = 'pending', skipped_reason = NULL
+      WHERE campaign_id = ${campaignId}
+        AND phone = ${phone}
+        AND status = 'paused'
+    `
 
     console.log(`[ReactivateClient] Reactivated ${pausedCalls.length} calls for ${phone} in campaign ${campaignId}`)
 
