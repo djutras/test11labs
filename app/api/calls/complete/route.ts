@@ -70,6 +70,9 @@ export async function POST(request: Request) {
 
     if (conversationId) {
       try {
+        // Wait a bit for ElevenLabs to finish processing the conversation
+        await new Promise(resolve => setTimeout(resolve, 2000))
+
         // Fetch transcript
         const transcriptResponse = await fetch(
           `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
@@ -83,6 +86,9 @@ export async function POST(request: Request) {
         if (transcriptResponse.ok) {
           const transcriptData = await transcriptResponse.json()
           transcript = transcriptData.transcript || transcriptData
+          console.log(`[CallComplete] Fetched transcript with ${Array.isArray(transcript) ? transcript.length : 0} messages`)
+        } else {
+          console.error(`[CallComplete] Failed to fetch transcript: ${transcriptResponse.status}`)
         }
 
         // Build audio URL through our proxy (to handle authentication)
@@ -122,7 +128,9 @@ export async function POST(request: Request) {
     // Send email notification only if there were actual exchanges
     // Check transcript even if outcome is 'failed' - sometimes calls with valid conversations get marked failed
     if (campaignId) {
-      if (!hasValidTranscriptExchanges(transcript)) {
+      const hasValidExchanges = hasValidTranscriptExchanges(transcript)
+      console.log(`[CallComplete] Email check - hasValidExchanges: ${hasValidExchanges}, campaignId: ${campaignId}`)
+      if (!hasValidExchanges) {
         console.log('[CallComplete] Skipping email - no valid transcript exchanges (no user response)')
       } else {
         try {
