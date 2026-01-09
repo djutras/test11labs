@@ -81,16 +81,21 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
     }
 
     // Cleanup stuck calls (calling for more than 5 minutes without webhook response)
+    // Instead of marking as failed, call /api/calls/complete as fallback for full processing
     const stuckCalls = await sql`
-      SELECT sc.id, sc.phone, sc.name, cl.conversation_id as "conversationId"
+      SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId",
+             cl.conversation_id as "conversationId", cl.id as "callLogId"
       FROM scheduled_calls sc
       LEFT JOIN call_logs cl ON cl.scheduled_call_id = sc.id
       WHERE sc.status = 'calling'
       AND sc.updated_at < NOW() - INTERVAL '5 minutes'
     `
 
+    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
+
     for (const stuckCall of stuckCalls) {
-      let reason = 'Call timed out - no response from provider'
+      let outcome: 'answered' | 'failed' = 'failed'
+      let duration = 0
 
       // Query ElevenLabs API to get real status
       if (stuckCall.conversationId && process.env.ELEVENLABS_API_KEY) {
@@ -103,29 +108,49 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
             const data = await response.json()
             console.log(`[ProcessCalls] ElevenLabs status for ${stuckCall.conversationId}:`, data.status, data.call?.status)
 
-            // Include ElevenLabs status in the reason
-            if (data.status || data.call?.status) {
-              reason = `ElevenLabs: ${data.status || data.call?.status}`
-              if (data.call?.termination_reason) {
-                reason += ` - ${data.call.termination_reason}`
-              }
+            // Determine outcome based on ElevenLabs status
+            if (data.status === 'done' || data.call?.status === 'ended') {
+              outcome = 'answered'
             }
+            duration = data.metadata?.call_duration_secs || data.call?.duration_secs || 0
           }
         } catch (err) {
           console.error('[ProcessCalls] Error querying ElevenLabs:', err)
         }
       }
 
-      await sql`
-        UPDATE scheduled_calls
-        SET status = 'failed', skipped_reason = ${reason}, updated_at = NOW()
-        WHERE id = ${stuckCall.id}
-      `
-      console.log(`[ProcessCalls] Marked stuck call as failed: ${stuckCall.phone} - ${reason}`)
+      // Call /api/calls/complete as fallback for full processing (transcript, email, DB update)
+      try {
+        console.log(`[ProcessCalls] Fallback: calling /api/calls/complete for ${stuckCall.phone}`)
+        const completeResponse = await fetch(`${baseUrl}/api/calls/complete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scheduledCallId: stuckCall.id,
+            campaignId: stuckCall.campaignId,
+            conversationId: stuckCall.conversationId,
+            callLogId: stuckCall.callLogId,
+            duration,
+            outcome,
+            phone: stuckCall.phone,
+            clientName: stuckCall.name
+          })
+        })
+        const result = await completeResponse.json()
+        console.log(`[ProcessCalls] Fallback processed: ${stuckCall.phone} - outcome: ${outcome}`, result)
+      } catch (err) {
+        console.error('[ProcessCalls] Fallback error:', err)
+        // If fallback fails, mark as failed directly
+        await sql`
+          UPDATE scheduled_calls
+          SET status = 'failed', skipped_reason = 'Fallback processing failed', updated_at = NOW()
+          WHERE id = ${stuckCall.id}
+        `
+      }
     }
 
     if (stuckCalls.length > 0) {
-      console.log(`[ProcessCalls] Cleaned up ${stuckCalls.length} stuck call(s)`)
+      console.log(`[ProcessCalls] Processed ${stuckCalls.length} stuck call(s) via fallback`)
     }
 
     // Get next pending call
@@ -195,7 +220,6 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       : call.firstMessage || ''
 
     // Make the outbound call via our API
-    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
     const callResponse = await fetch(`${baseUrl}/api/outbound-call`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
