@@ -4,6 +4,10 @@
 import { NextResponse } from 'next/server'
 import { neon } from '@neondatabase/serverless'
 
+// Disable caching for this route
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 const CALLING_HOURS = {
   start: 7,
   end: 24, // Minuit
