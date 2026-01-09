@@ -66,21 +66,7 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       }
     }
 
-    // Check if any call is in progress
-    const inProgressResult = await sql`
-      SELECT COUNT(*) as count FROM scheduled_calls WHERE status = 'in_progress'
-    `
-    const inProgressCount = Number(inProgressResult[0]?.count || 0)
-
-    if (inProgressCount > 0) {
-      console.log('[ProcessCalls] Call already in progress, waiting')
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ message: 'Call in progress, waiting' })
-      }
-    }
-
-    // Cleanup stuck calls (calling for more than 5 minutes without webhook response)
+    // First, cleanup stuck calls (calling for more than 5 minutes without webhook response)
     // Instead of marking as failed, call /api/calls/complete as fallback for full processing
     const stuckCalls = await sql`
       SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId",
@@ -151,6 +137,22 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
 
     if (stuckCalls.length > 0) {
       console.log(`[ProcessCalls] Processed ${stuckCalls.length} stuck call(s) via fallback`)
+    }
+
+    // Check if any call is still in progress or calling (exclude stuck calls we just processed)
+    const inProgressResult = await sql`
+      SELECT COUNT(*) as count FROM scheduled_calls
+      WHERE status IN ('in_progress', 'calling')
+      AND updated_at >= NOW() - INTERVAL '5 minutes'
+    `
+    const inProgressCount = Number(inProgressResult[0]?.count || 0)
+
+    if (inProgressCount > 0) {
+      console.log('[ProcessCalls] Call already in progress, waiting')
+      return {
+        statusCode: 200,
+        body: JSON.stringify({ message: 'Call in progress, waiting' })
+      }
     }
 
     // Get next pending call
