@@ -120,7 +120,8 @@ export async function POST(request: Request) {
     }
 
     // Send email notification only if there were actual exchanges
-    if (campaignId && outcome !== 'failed') {
+    // Check transcript even if outcome is 'failed' - sometimes calls with valid conversations get marked failed
+    if (campaignId) {
       if (!hasValidTranscriptExchanges(transcript)) {
         console.log('[CallComplete] Skipping email - no valid transcript exchanges (no user response)')
       } else {
