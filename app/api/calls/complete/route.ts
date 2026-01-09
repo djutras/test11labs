@@ -250,23 +250,38 @@ async function sendEmailNotification(params: {
   const reactivateUrl = `${baseUrl}/api/campaigns/${params.campaignId}/reactivate-client/${encodeURIComponent(params.phone || '')}`
 
   const emailSubject = `[${campaign.name}] Call ${params.outcome}: ${params.clientName || params.phone}`
-  const emailBody = `
-Call Completed
 
-Campaign: ${campaign.name}
-Client: ${params.clientName || 'Unknown'}
-Phone: ${params.phone || 'Unknown'}
-Outcome: ${params.outcome}
-Duration: ${durationText}
+  // Escape HTML in transcript to prevent XSS
+  const escapeHtml = (text: string) => text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+  const safeTranscript = escapeHtml(transcriptText)
 
-${params.audioUrl ? `Audio Recording: ${params.audioUrl}` : ''}
+  const emailBodyHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <h2 style="color: #1f2937;">Appel terminé</h2>
 
-Transcript:
-${transcriptText}
+  <p><strong>Campagne:</strong> ${campaign.name}</p>
+  <p><strong>Client:</strong> ${params.clientName || 'Unknown'}</p>
+  <p><strong>Téléphone:</strong> ${params.phone || 'Unknown'}</p>
+  <p><strong>Résultat:</strong> ${params.outcome}</p>
+  <p><strong>Durée:</strong> ${durationText}</p>
 
----
-Réactiver les appels pour ce client: ${reactivateUrl}
-View in dashboard: ${baseUrl}/campaigns/${params.campaignId}
+  ${params.audioUrl ? `<p><a href="${params.audioUrl}" style="color: #2563eb; text-decoration: none;">🔊 Enregistrement Audio</a></p>` : ''}
+
+  <h3 style="color: #1f2937;">Transcript:</h3>
+  <pre style="background: #f5f5f5; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; font-size: 14px;">${safeTranscript}</pre>
+
+  <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;">
+
+  <p><a href="${reactivateUrl}" style="color: #2563eb; text-decoration: none;">🔄 Réactiver les appels pour ce client</a></p>
+  <p><a href="${baseUrl}/campaigns/${params.campaignId}" style="color: #2563eb; text-decoration: none;">📊 Voir dans le dashboard</a></p>
+</body>
+</html>
 `
 
   // Send email using SendGrid
@@ -285,7 +300,7 @@ View in dashboard: ${baseUrl}/campaigns/${params.campaignId}
           personalizations: [{ to: [{ email: campaign.creatorEmail }] }],
           from: { email: 'info@opportunitesparcourriel.com', name: 'Call Campaigns' },
           subject: emailSubject,
-          content: [{ type: 'text/plain', value: emailBody }]
+          content: [{ type: 'text/html', value: emailBodyHtml }]
         })
       })
 
