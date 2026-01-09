@@ -136,56 +136,61 @@ export async function POST(request: Request) {
       })
     }
 
-    // Send email notification only if there were actual exchanges
-    // Check transcript even if outcome is 'failed' - sometimes calls with valid conversations get marked failed
+    // Send email notification only if there were actual exchanges with a real person
+    // Skip email for voicemail - we don't want to notify for answering machine responses
     if (campaignId) {
-      const hasValidExchanges = hasValidTranscriptExchanges(transcript)
-      console.log(`[CallComplete] Email check - hasValidExchanges: ${hasValidExchanges}, campaignId: ${campaignId}`)
-      if (!hasValidExchanges) {
-        console.log('[CallComplete] Skipping email - no valid transcript exchanges (no user response)')
+      // Skip email for voicemail outcomes
+      if (finalStatus === 'voicemail') {
+        console.log('[CallComplete] Skipping email - voicemail detected')
       } else {
-        try {
-          const emailSent = await sendEmailNotification({
-            campaignId,
-            phone: body.phone,
-            clientName: body.clientName,
-            outcome: finalStatus,
-            duration,
-            transcript,
-            audioUrl,
-            conversationId
-          })
+        const hasValidExchanges = hasValidTranscriptExchanges(transcript)
+        console.log(`[CallComplete] Email check - hasValidExchanges: ${hasValidExchanges}, campaignId: ${campaignId}`)
+        if (!hasValidExchanges) {
+          console.log('[CallComplete] Skipping email - no valid transcript exchanges (no user response)')
+        } else {
+          try {
+            const emailSent = await sendEmailNotification({
+              campaignId,
+              phone: body.phone,
+              clientName: body.clientName,
+              outcome: finalStatus,
+              duration,
+              transcript,
+              audioUrl,
+              conversationId
+            })
 
-          // Update email_sent flag in call_log
-          if (emailSent && callLogId) {
-            await updateCallLog(callLogId, { emailSent: true })
-          }
+            // Update email_sent flag in call_log
+            if (emailSent && callLogId) {
+              await updateCallLog(callLogId, { emailSent: true })
+            }
 
-          // Pause other pending calls for this prospect since we had a valid exchange
-          if (emailSent && body.phone) {
-            try {
-              const futureData = await getClientFutureCallsByPhone(campaignId, body.phone)
-              if (futureData?.futureCalls) {
-                let pausedCount = 0
-                for (const call of futureData.futureCalls) {
-                  if (call.status === 'pending') {
-                    await updateScheduledCall(call.id, {
-                      status: 'paused',
-                      skippedReason: 'Paused - email sent after successful exchange'
-                    })
-                    pausedCount++
+            // Pause other pending calls for this prospect since we had a valid exchange
+            if (emailSent && body.phone) {
+              try {
+                const futureData = await getClientFutureCallsByPhone(campaignId, body.phone)
+                if (futureData?.futureCalls) {
+                  let pausedCount = 0
+                  for (const call of futureData.futureCalls) {
+                    if (call.status === 'pending') {
+                      await updateScheduledCall(call.id, {
+                        status: 'paused',
+                        skippedReason: 'Paused - email sent after successful exchange'
+                      })
+                      pausedCount++
+                    }
+                  }
+                  if (pausedCount > 0) {
+                    console.log(`[CallComplete] Paused ${pausedCount} pending calls for ${body.phone}`)
                   }
                 }
-                if (pausedCount > 0) {
-                  console.log(`[CallComplete] Paused ${pausedCount} pending calls for ${body.phone}`)
-                }
+              } catch (pauseErr) {
+                console.error('[CallComplete] Error pausing future calls:', pauseErr)
               }
-            } catch (pauseErr) {
-              console.error('[CallComplete] Error pausing future calls:', pauseErr)
             }
+          } catch (err) {
+            console.error('[CallComplete] Error sending email:', err)
           }
-        } catch (err) {
-          console.error('[CallComplete] Error sending email:', err)
         }
       }
     }
