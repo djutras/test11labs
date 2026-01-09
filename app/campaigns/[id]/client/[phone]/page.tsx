@@ -38,11 +38,53 @@ export default function ClientHistoryPage() {
   const [client, setClient] = useState<ClientData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editForm, setEditForm] = useState({ name: '', phone: '' })
+  const [saving, setSaving] = useState(false)
   const router = useRouter()
   const params = useParams()
   const campaignId = params.id as string
   const phone = params.phone as string
   const { language } = useLanguage()
+
+  // Open edit modal with current values
+  const handleEditClick = () => {
+    if (client) {
+      setEditForm({ name: client.name, phone: client.phone })
+      setIsEditing(true)
+    }
+  }
+
+  // Save changes
+  const handleSave = async () => {
+    if (!client) return
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/campaigns/${campaignId}/client/${encodeURIComponent(phone)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editForm.name,
+          newPhone: editForm.phone !== client.phone ? editForm.phone : undefined
+        })
+      })
+      const data = await response.json()
+      if (data.success) {
+        // If phone changed, redirect to new URL
+        if (data.newPhone && data.newPhone !== phone) {
+          router.push(`/campaigns/${campaignId}/client/${encodeURIComponent(data.newPhone)}`)
+        } else {
+          // Just refresh the data
+          setClient({ ...client, name: editForm.name, phone: editForm.phone })
+          setIsEditing(false)
+        }
+      }
+    } catch (err) {
+      console.error('Error saving:', err)
+    } finally {
+      setSaving(false)
+    }
+  }
 
   // Check authentication
   useEffect(() => {
@@ -184,14 +226,78 @@ export default function ClientHistoryPage() {
 
         {/* Client header */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
-            {client.name}
-          </h1>
-          <p className="text-gray-600 text-lg mb-2">{client.phone}</p>
-          <p className="text-gray-500">
-            {client.totalCalls} {language === 'fr' ? 'appel(s) au total' : 'total call(s)'}
-          </p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                {client.name}
+              </h1>
+              <p className="text-gray-600 text-lg mb-2">{client.phone}</p>
+              <p className="text-gray-500">
+                {client.totalCalls} {language === 'fr' ? 'appel(s) au total' : 'total call(s)'}
+              </p>
+            </div>
+            <button
+              onClick={handleEditClick}
+              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-2"
+            >
+              <span>✏️</span>
+              <span>{language === 'fr' ? 'Modifier' : 'Edit'}</span>
+            </button>
+          </div>
         </div>
+
+        {/* Edit Modal */}
+        {isEditing && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+              <h2 className="text-xl font-bold text-gray-900 mb-4">
+                {language === 'fr' ? 'Modifier le prospect' : 'Edit Prospect'}
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {language === 'fr' ? 'Nom' : 'Name'}
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {language === 'fr' ? 'Téléphone' : 'Phone'}
+                  </label>
+                  <input
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  disabled={saving}
+                >
+                  {language === 'fr' ? 'Annuler' : 'Cancel'}
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {saving
+                    ? (language === 'fr' ? 'Enregistrement...' : 'Saving...')
+                    : (language === 'fr' ? 'Enregistrer' : 'Save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Call history */}
         <div className="space-y-4">
