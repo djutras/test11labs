@@ -184,9 +184,9 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       }
     }
 
-    // Mark call as in progress
+    // Mark call as in progress (set updated_at for timeout tracking)
     await sql`
-      UPDATE scheduled_calls SET status = 'in_progress' WHERE id = ${call.id}
+      UPDATE scheduled_calls SET status = 'in_progress', updated_at = NOW() WHERE id = ${call.id}
     `
 
     // Prepare the first message with recording disclosure

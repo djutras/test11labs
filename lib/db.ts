@@ -570,7 +570,8 @@ export async function updateScheduledCall(id: string, updates: Partial<Scheduled
         status = COALESCE(${updates.status || null}, status),
         retry_count = COALESCE(${updates.retryCount ?? null}, retry_count),
         skipped_reason = COALESCE(${updates.skippedReason || null}, skipped_reason),
-        scheduled_at = COALESCE(${updates.scheduledAt || null}, scheduled_at)
+        scheduled_at = COALESCE(${updates.scheduledAt || null}, scheduled_at),
+        updated_at = NOW()
       WHERE id = ${id}
       RETURNING id, campaign_id as "campaignId", client_id as "clientId", phone, name,
                 first_message as "firstMessage", full_prompt as "fullPrompt",
