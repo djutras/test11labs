@@ -8,20 +8,77 @@ import {
   getCallLogByConversationId,
   updateCallLog
 } from '@/lib/db'
+import crypto from 'crypto'
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
+const ELEVENLABS_WEBHOOK_SECRET = process.env.ELEVENLABS_WEBHOOK_SECRET
+
+// Verify HMAC signature from ElevenLabs
+async function verifySignature(payload: string, signature: string | null): Promise<boolean> {
+  if (!ELEVENLABS_WEBHOOK_SECRET) {
+    console.log('[ElevenLabs Webhook] No webhook secret configured, skipping verification')
+    return true // Skip verification if no secret is configured (for backward compatibility)
+  }
+
+  if (!signature) {
+    console.log('[ElevenLabs Webhook] No signature header provided')
+    return false
+  }
+
+  try {
+    const hmac = crypto.createHmac('sha256', ELEVENLABS_WEBHOOK_SECRET)
+    hmac.update(payload)
+    const expectedSignature = hmac.digest('hex')
+
+    // ElevenLabs sends signature in format: "sha256=<hex>"
+    const receivedSignature = signature.startsWith('sha256=')
+      ? signature.slice(7)
+      : signature
+
+    const isValid = crypto.timingSafeEqual(
+      Buffer.from(expectedSignature, 'hex'),
+      Buffer.from(receivedSignature, 'hex')
+    )
+
+    if (!isValid) {
+      console.log('[ElevenLabs Webhook] Signature verification failed')
+      console.log('[ElevenLabs Webhook] Expected:', expectedSignature.slice(0, 20) + '...')
+      console.log('[ElevenLabs Webhook] Received:', receivedSignature.slice(0, 20) + '...')
+    }
+
+    return isValid
+  } catch (err) {
+    console.error('[ElevenLabs Webhook] Signature verification error:', err)
+    return false
+  }
+}
 
 // POST /api/elevenlabs-webhook
 // Called by ElevenLabs when a conversation ends
 export async function POST(request: Request) {
   try {
+    // Get raw body for signature verification
+    const rawBody = await request.text()
+
+    // Verify HMAC signature
+    const signature = request.headers.get('elevenlabs-signature') || request.headers.get('x-elevenlabs-signature')
+    const isValid = await verifySignature(rawBody, signature)
+
+    if (!isValid && ELEVENLABS_WEBHOOK_SECRET) {
+      console.log('[ElevenLabs Webhook] Invalid signature, rejecting request')
+      return NextResponse.json(
+        { success: false, error: 'Invalid signature' },
+        { status: 401 }
+      )
+    }
+
+    // Parse the body after verification
+    const body = JSON.parse(rawBody)
+
     // Get query params for metadata (may not be present since this is a global webhook)
     const url = new URL(request.url)
     let scheduledCallId = url.searchParams.get('scheduledCallId')
     let campaignId = url.searchParams.get('campaignId')
-
-    // Parse webhook payload
-    const body = await request.json()
 
     console.log('[ElevenLabs Webhook] Received:', JSON.stringify(body, null, 2))
 
