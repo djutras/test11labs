@@ -31,11 +31,15 @@ export async function GET(
     }
 
     // Get paused calls for this phone
+    // Normalize phone to match with or without + prefix
+    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`
+    const phoneWithoutPlus = phone.replace(/^\+/, '')
+
     const db = getDb()
     const pausedCalls = await db`
       SELECT id, name FROM scheduled_calls
       WHERE campaign_id = ${campaignId}
-        AND phone = ${phone}
+        AND (phone = ${normalizedPhone} OR phone = ${phoneWithoutPlus})
         AND status = 'paused'
     `
 
@@ -61,7 +65,7 @@ export async function GET(
       UPDATE scheduled_calls
       SET status = 'pending', skipped_reason = NULL
       WHERE campaign_id = ${campaignId}
-        AND phone = ${phone}
+        AND (phone = ${normalizedPhone} OR phone = ${phoneWithoutPlus})
         AND status = 'paused'
     `
 

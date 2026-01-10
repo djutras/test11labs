@@ -332,7 +332,9 @@ async function sendEmailNotification(params: {
 
   // Build email content
   const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
-  const reactivateUrl = `${baseUrl}/api/campaigns/${params.campaignId}/reactivate-client/${encodeURIComponent(params.phone || '')}`
+  // Remove + from phone to avoid URL encoding issues (%2B causes 404 on Netlify)
+  const phoneForUrl = (params.phone || '').replace(/^\+/, '')
+  const reactivateUrl = `${baseUrl}/api/campaigns/${params.campaignId}/reactivate-client/${phoneForUrl}`
 
   const emailSubject = `[${campaign.name}] Call ${params.outcome}: ${params.clientName || params.phone}`
 
