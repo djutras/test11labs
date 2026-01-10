@@ -60,16 +60,35 @@ export async function GET(
 
     const clientName = pausedCalls[0]?.name || phone
 
-    // Reactivate all paused calls - use direct SQL to clear skipped_reason
-    await db`
+    // Reactivate all paused calls - use RETURNING to verify the update worked
+    const updatedCalls = await db`
       UPDATE scheduled_calls
-      SET status = 'pending', skipped_reason = NULL
+      SET status = 'pending', skipped_reason = NULL, updated_at = NOW()
       WHERE campaign_id = ${campaignId}
         AND (phone = ${normalizedPhone} OR phone = ${phoneWithoutPlus})
         AND status = 'paused'
+      RETURNING id, name
     `
 
-    console.log(`[ReactivateClient] Reactivated ${pausedCalls.length} calls for ${phone} in campaign ${campaignId}`)
+    // Verify the update actually worked
+    if (updatedCalls.length === 0) {
+      console.error(`[ReactivateClient] UPDATE returned 0 rows for ${phone} in campaign ${campaignId}`)
+      return new Response(`
+        <html>
+          <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+            <h2 style="color: #f59e0b;">Aucun appel réactivé</h2>
+            <p>La mise à jour n'a pas fonctionné. Les appels sont peut-être déjà actifs.</p>
+            <p>Phone: ${phone}</p>
+            <p>Campagne: ${campaign.name}</p>
+            <p><a href="/campaigns/${campaignId}">Voir la campagne</a></p>
+          </body>
+        </html>
+      `, {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      })
+    }
+
+    console.log(`[ReactivateClient] Reactivated ${updatedCalls.length} calls for ${phone} in campaign ${campaignId}`)
 
     // Return success page
     const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
@@ -82,7 +101,7 @@ export async function GET(
         </head>
         <body style="font-family: sans-serif; padding: 40px; text-align: center; max-width: 500px; margin: 0 auto;">
           <h2 style="color: #22c55e;">Campagne réactivée!</h2>
-          <p><strong>${pausedCalls.length}</strong> appel(s) réactivé(s) pour <strong>${clientName}</strong></p>
+          <p><strong>${updatedCalls.length}</strong> appel(s) réactivé(s) pour <strong>${clientName}</strong></p>
           <p style="color: #666;">Phone: ${phone}</p>
           <p style="color: #666;">Campagne: ${campaign.name}</p>
           <p style="margin-top: 30px;">
