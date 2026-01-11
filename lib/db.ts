@@ -151,7 +151,7 @@ export async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS scheduled_calls (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
-        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        client_id UUID REFERENCES outbound_clients(id) ON DELETE SET NULL,
         phone VARCHAR(20) NOT NULL,
         name VARCHAR(255),
         first_message TEXT,
@@ -160,7 +160,8 @@ export async function initializeDatabase() {
         status VARCHAR(20) DEFAULT 'pending',
         retry_count INT DEFAULT 0,
         skipped_reason TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
       )
     `
 
@@ -169,7 +170,7 @@ export async function initializeDatabase() {
       CREATE TABLE IF NOT EXISTS call_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         campaign_id UUID REFERENCES campaigns(id) ON DELETE SET NULL,
-        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        client_id UUID REFERENCES outbound_clients(id) ON DELETE SET NULL,
         scheduled_call_id UUID REFERENCES scheduled_calls(id) ON DELETE SET NULL,
         conversation_id VARCHAR(255),
         call_sid VARCHAR(255),
@@ -257,6 +258,10 @@ export async function initializeDatabase() {
         -- Make slug column nullable if it exists (legacy column)
         IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'campaigns' AND column_name = 'slug') THEN
           ALTER TABLE campaigns ALTER COLUMN slug DROP NOT NULL;
+        END IF;
+        -- Add updated_at column to scheduled_calls if missing (required for cron job)
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scheduled_calls' AND column_name = 'updated_at') THEN
+          ALTER TABLE scheduled_calls ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
         END IF;
       END $$;
     `
@@ -713,7 +718,7 @@ export async function getCallLogs(options: {
              cl.created_at as "createdAt",
              c.name as "clientName", camp.name as "campaignName"
       FROM call_logs cl
-      LEFT JOIN clients c ON cl.client_id = c.id
+      LEFT JOIN outbound_clients c ON cl.client_id = c.id
       LEFT JOIN campaigns camp ON cl.campaign_id = camp.id
       WHERE (${options.campaignId || null}::uuid IS NULL OR cl.campaign_id = ${options.campaignId || null})
         AND (${options.outcome || null} IS NULL OR cl.outcome = ${options.outcome || null})
@@ -728,7 +733,7 @@ export async function getCallLogs(options: {
     const countResult = await db`
       SELECT COUNT(*) as total
       FROM call_logs cl
-      LEFT JOIN clients c ON cl.client_id = c.id
+      LEFT JOIN outbound_clients c ON cl.client_id = c.id
       WHERE (${options.campaignId || null}::uuid IS NULL OR cl.campaign_id = ${options.campaignId || null})
         AND (${options.outcome || null} IS NULL OR cl.outcome = ${options.outcome || null})
         AND (${options.reviewStatus || null} IS NULL OR cl.review_status = ${options.reviewStatus || null})
