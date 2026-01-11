@@ -66,78 +66,45 @@ const handler: Handler = async (event: HandlerEvent, context: HandlerContext) =>
       }
     }
 
-    // First, cleanup stuck calls (calling for more than 5 minutes without webhook response)
-    // Instead of marking as failed, call /api/calls/complete as fallback for full processing
+    // OPTIMIZED: Quick stuck call processing - no external API calls to avoid timeout
     const stuckCalls = await sql`
-      SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId",
-             cl.conversation_id as "conversationId", cl.id as "callLogId"
+      SELECT
+        sc.id,
+        sc.phone,
+        (SELECT cl.outcome FROM call_logs cl
+         WHERE cl.scheduled_call_id = sc.id
+         AND cl.outcome IN ('answered', 'voicemail')
+         ORDER BY cl.created_at DESC LIMIT 1) as existing_outcome
       FROM scheduled_calls sc
-      LEFT JOIN call_logs cl ON cl.scheduled_call_id = sc.id
       WHERE sc.status = 'calling'
       AND sc.updated_at < NOW() - INTERVAL '5 minutes'
+      LIMIT 10
     `
 
-    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
-
+    // Process stuck calls quickly - just sync status from call_logs
     for (const stuckCall of stuckCalls) {
-      let outcome: 'answered' | 'failed' = 'failed'
-      let duration = 0
-
-      // Query ElevenLabs API to get real status
-      if (stuckCall.conversationId && process.env.ELEVENLABS_API_KEY) {
-        try {
-          const response = await fetch(
-            `https://api.elevenlabs.io/v1/convai/conversations/${stuckCall.conversationId}`,
-            { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }
-          )
-          if (response.ok) {
-            const data = await response.json()
-            console.log(`[ProcessCalls] ElevenLabs status for ${stuckCall.conversationId}:`, data.status, data.call?.status)
-
-            // Determine outcome based on ElevenLabs status
-            if (data.status === 'done' || data.call?.status === 'ended') {
-              outcome = 'answered'
-            }
-            duration = data.metadata?.call_duration_secs || data.call?.duration_secs || 0
-          }
-        } catch (err) {
-          console.error('[ProcessCalls] Error querying ElevenLabs:', err)
-        }
-      }
-
-      // Call /api/calls/complete as fallback for full processing (transcript, email, DB update)
-      try {
-        console.log(`[ProcessCalls] Fallback: calling /api/calls/complete for ${stuckCall.phone}`)
-        const completeResponse = await fetch(`${baseUrl}/api/calls/complete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scheduledCallId: stuckCall.id,
-            campaignId: stuckCall.campaignId,
-            conversationId: stuckCall.conversationId,
-            callLogId: stuckCall.callLogId,
-            duration,
-            outcome,
-            phone: stuckCall.phone,
-            clientName: stuckCall.name
-          })
-        })
-        const result = await completeResponse.json()
-        console.log(`[ProcessCalls] Fallback processed: ${stuckCall.phone} - outcome: ${outcome}`, result)
-      } catch (err) {
-        console.error('[ProcessCalls] Fallback error:', err)
-        // If fallback fails, mark as failed directly
+      if (stuckCall.existing_outcome) {
+        console.log(`[ProcessCalls] Syncing stuck call ${stuckCall.phone} to ${stuckCall.existing_outcome}`)
         await sql`
           UPDATE scheduled_calls
-          SET status = 'failed', skipped_reason = 'Fallback processing failed', updated_at = NOW()
+          SET status = ${stuckCall.existing_outcome}, updated_at = NOW()
+          WHERE id = ${stuckCall.id}
+        `
+      } else {
+        console.log(`[ProcessCalls] Marking stuck call ${stuckCall.phone} as failed`)
+        await sql`
+          UPDATE scheduled_calls
+          SET status = 'failed', skipped_reason = 'Call stuck in calling state', updated_at = NOW()
           WHERE id = ${stuckCall.id}
         `
       }
     }
 
     if (stuckCalls.length > 0) {
-      console.log(`[ProcessCalls] Processed ${stuckCalls.length} stuck call(s) via fallback`)
+      console.log(`[ProcessCalls] Processed ${stuckCalls.length} stuck call(s)`)
     }
+
+    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
 
     // Check if any call is still in progress or calling (exclude stuck calls we just processed)
     const inProgressResult = await sql`
