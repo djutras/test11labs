@@ -2,7 +2,8 @@
 // Reactivate paused calls for a specific client
 
 import { NextResponse } from 'next/server'
-import { getCampaignById, getDb } from '@/lib/db'
+import { getCampaignById } from '@/lib/db'
+import { neon } from '@neondatabase/serverless'
 
 // GET /api/campaigns/[campaignId]/reactivate-client/[phone]
 // Reactivates paused calls and shows confirmation page
@@ -35,8 +36,10 @@ export async function GET(
     const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`
     const phoneWithoutPlus = phone.replace(/^\+/, '')
 
-    const db = getDb()
-    const pausedCalls = await db`
+    // Create fresh DB connection (not singleton) to avoid serverless caching issues
+    const sql = neon(process.env.DATABASE_URL!)
+
+    const pausedCalls = await sql`
       SELECT id, name FROM scheduled_calls
       WHERE campaign_id = ${campaignId}
         AND (phone = ${normalizedPhone} OR phone = ${phoneWithoutPlus})
@@ -61,7 +64,7 @@ export async function GET(
     const clientName = pausedCalls[0]?.name || phone
 
     // Reactivate all paused calls - use RETURNING to verify the update worked
-    const updatedCalls = await db`
+    const updatedCalls = await sql`
       UPDATE scheduled_calls
       SET status = 'pending', skipped_reason = NULL, updated_at = NOW()
       WHERE campaign_id = ${campaignId}
