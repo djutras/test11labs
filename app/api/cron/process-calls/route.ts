@@ -46,21 +46,25 @@ export async function GET(request: Request) {
     // IMPORTANT: Process stuck calls FIRST (before checking in_progress)
     // This fixes the bug where stuck calls would block all future calls forever
     // OPTIMIZED: Quick processing to avoid timeout - just sync status from call_logs
+    // FIX: Increased timeout to 10 minutes and include all valid outcomes
     const stuckCalls = await sql`
       SELECT
         sc.id,
         sc.phone,
         (SELECT cl.outcome FROM call_logs cl
          WHERE cl.scheduled_call_id = sc.id
-         AND cl.outcome IN ('answered', 'voicemail')
-         ORDER BY cl.created_at DESC LIMIT 1) as existing_outcome
+         AND cl.outcome IS NOT NULL
+         ORDER BY cl.created_at DESC LIMIT 1) as existing_outcome,
+        (SELECT cl.conversation_id FROM call_logs cl
+         WHERE cl.scheduled_call_id = sc.id
+         ORDER BY cl.created_at DESC LIMIT 1) as conversation_id
       FROM scheduled_calls sc
       WHERE sc.status = 'calling'
-      AND sc.updated_at < NOW() - INTERVAL '5 minutes'
+      AND sc.updated_at < NOW() - INTERVAL '10 minutes'
       LIMIT 10
     `
 
-    // Process stuck calls quickly - no external API calls
+    // Process stuck calls - verify with ElevenLabs API if no call_log exists
     for (const stuckCall of stuckCalls) {
       if (stuckCall.existing_outcome) {
         // Already processed by webhook - just sync status
@@ -70,9 +74,47 @@ export async function GET(request: Request) {
           SET status = ${stuckCall.existing_outcome}, updated_at = NOW()
           WHERE id = ${stuckCall.id}
         `
+      } else if (stuckCall.conversation_id && process.env.ELEVENLABS_API_KEY) {
+        // Try to verify call status via ElevenLabs API before marking as failed
+        try {
+          console.log(`[Cron] Checking ElevenLabs API for conversation ${stuckCall.conversation_id}`)
+          const elevenLabsResponse = await fetch(
+            `https://api.elevenlabs.io/v1/convai/conversations/${stuckCall.conversation_id}`,
+            {
+              headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }
+            }
+          )
+
+          if (elevenLabsResponse.ok) {
+            const data = await elevenLabsResponse.json()
+            const callStatus = data.status || data.call_status
+            const duration = data.call_duration_secs || data.metadata?.call_duration_secs || 0
+
+            // If call has ended with any status, mark appropriately
+            if (callStatus === 'done' || callStatus === 'ended' || callStatus === 'completed' || duration > 0) {
+              console.log(`[Cron] ElevenLabs confirms call completed for ${stuckCall.phone}, duration: ${duration}s`)
+              await sql`
+                UPDATE scheduled_calls
+                SET status = 'answered', updated_at = NOW()
+                WHERE id = ${stuckCall.id}
+              `
+              continue
+            }
+          }
+        } catch (err) {
+          console.error(`[Cron] Error checking ElevenLabs API:`, err)
+        }
+
+        // If ElevenLabs check failed or no data, mark as failed
+        console.log(`[Cron] Marking stuck call ${stuckCall.phone} as failed (ElevenLabs check inconclusive)`)
+        await sql`
+          UPDATE scheduled_calls
+          SET status = 'failed', skipped_reason = 'Call stuck in calling state', updated_at = NOW()
+          WHERE id = ${stuckCall.id}
+        `
       } else {
-        // No successful call log - mark as failed
-        console.log(`[Cron] Marking stuck call ${stuckCall.phone} as failed`)
+        // No call log and no conversation_id - mark as failed
+        console.log(`[Cron] Marking stuck call ${stuckCall.phone} as failed (no call log)`)
         await sql`
           UPDATE scheduled_calls
           SET status = 'failed', skipped_reason = 'Call stuck in calling state', updated_at = NOW()
