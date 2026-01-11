@@ -1083,7 +1083,8 @@ export async function getClientFutureCallsByPhone(campaignId: string, phone: str
         scheduledAt: fc.scheduledAt,
         status: fc.status,
         retryCount: fc.retryCount,
-        createdAt: fc.createdAt
+        createdAt: fc.createdAt,
+        manuallyReactivated: fc.manuallyReactivated || false
       }))
     }
   } catch (error) {
