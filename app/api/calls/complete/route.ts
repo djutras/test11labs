@@ -63,8 +63,8 @@ export async function POST(request: Request) {
 
     if (conversationId) {
       try {
-        // Wait a bit for ElevenLabs to finish processing the conversation
-        await new Promise(resolve => setTimeout(resolve, 2000))
+        // Small delay to let ElevenLabs finish processing (reduced from 2s to avoid timeouts)
+        await new Promise(resolve => setTimeout(resolve, 500))
 
         // Fetch transcript
         const transcriptResponse = await fetch(

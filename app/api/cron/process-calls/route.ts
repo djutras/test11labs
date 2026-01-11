@@ -45,110 +45,47 @@ export async function GET(request: Request) {
 
     // IMPORTANT: Process stuck calls FIRST (before checking in_progress)
     // This fixes the bug where stuck calls would block all future calls forever
-    // Instead of just marking as failed, we do full processing via /api/calls/complete
+    // OPTIMIZED: Quick processing to avoid timeout - just sync status from call_logs
     const stuckCalls = await sql`
-      SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId"
+      SELECT
+        sc.id,
+        sc.phone,
+        (SELECT cl.outcome FROM call_logs cl
+         WHERE cl.scheduled_call_id = sc.id
+         AND cl.outcome IN ('answered', 'voicemail')
+         ORDER BY cl.created_at DESC LIMIT 1) as existing_outcome
       FROM scheduled_calls sc
       WHERE sc.status = 'calling'
       AND sc.updated_at < NOW() - INTERVAL '5 minutes'
+      LIMIT 10
     `
 
-    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
-
+    // Process stuck calls quickly - no external API calls
     for (const stuckCall of stuckCalls) {
-      // Check if there's already a successful call_log for this scheduled_call
-      // This handles the race condition where webhook arrives after cron starts processing
-      const existingSuccessLog = await sql`
-        SELECT id, conversation_id, outcome, email_sent
-        FROM call_logs
-        WHERE scheduled_call_id = ${stuckCall.id}
-        AND outcome IN ('answered', 'voicemail')
-        AND conversation_id IS NOT NULL
-        ORDER BY created_at DESC
-        LIMIT 1
-      `
-
-      if (existingSuccessLog.length > 0) {
-        // Already processed successfully by webhook - just update scheduled_call status
-        const successLog = existingSuccessLog[0]
-        console.log(`[Cron] Found existing successful call_log for ${stuckCall.phone}, outcome: ${successLog.outcome}`)
+      if (stuckCall.existing_outcome) {
+        // Already processed by webhook - just sync status
+        console.log(`[Cron] Syncing stuck call ${stuckCall.phone} to ${stuckCall.existing_outcome}`)
         await sql`
           UPDATE scheduled_calls
-          SET status = ${successLog.outcome}, updated_at = NOW()
+          SET status = ${stuckCall.existing_outcome}, updated_at = NOW()
           WHERE id = ${stuckCall.id}
         `
-        continue
-      }
-
-      // Get the most recent call_log (if any) to get conversation_id
-      const recentLog = await sql`
-        SELECT id, conversation_id
-        FROM call_logs
-        WHERE scheduled_call_id = ${stuckCall.id}
-        ORDER BY created_at DESC
-        LIMIT 1
-      `
-      const callLogId = recentLog[0]?.id
-      const conversationId = recentLog[0]?.conversation_id
-
-      let outcome: 'answered' | 'failed' = 'failed'
-      let duration = 0
-
-      // Query ElevenLabs API to get real status
-      if (conversationId && process.env.ELEVENLABS_API_KEY) {
-        try {
-          const response = await fetch(
-            `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
-            { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }
-          )
-          if (response.ok) {
-            const data = await response.json()
-            console.log(`[Cron] ElevenLabs status for ${conversationId}:`, data.status, data.call?.status)
-
-            // Determine outcome based on ElevenLabs status
-            if (data.status === 'done' || data.call?.status === 'ended') {
-              outcome = 'answered'
-            }
-            duration = data.metadata?.call_duration_secs || data.call?.duration_secs || 0
-          }
-        } catch (err) {
-          console.error('[Cron] Error querying ElevenLabs:', err)
-        }
-      }
-
-      // Call /api/calls/complete for full processing (transcript, voicemail detection, email)
-      try {
-        console.log(`[Cron] Fallback processing for ${stuckCall.phone}`)
-        const completeResponse = await fetch(`${baseUrl}/api/calls/complete`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            scheduledCallId: stuckCall.id,
-            campaignId: stuckCall.campaignId,
-            conversationId,
-            callLogId,
-            duration,
-            outcome,
-            phone: stuckCall.phone,
-            clientName: stuckCall.name
-          })
-        })
-        const result = await completeResponse.json()
-        console.log(`[Cron] Fallback processed: ${stuckCall.phone} - status: ${result.status}`)
-      } catch (err) {
-        console.error('[Cron] Fallback error:', err)
-        // If fallback fails, mark as failed directly
+      } else {
+        // No successful call log - mark as failed
+        console.log(`[Cron] Marking stuck call ${stuckCall.phone} as failed`)
         await sql`
           UPDATE scheduled_calls
-          SET status = 'failed', skipped_reason = 'Fallback processing failed', updated_at = NOW()
+          SET status = 'failed', skipped_reason = 'Call stuck in calling state', updated_at = NOW()
           WHERE id = ${stuckCall.id}
         `
       }
     }
 
     if (stuckCalls.length > 0) {
-      console.log(`[Cron] Processed ${stuckCalls.length} stuck call(s) via fallback`)
+      console.log(`[Cron] Processed ${stuckCalls.length} stuck call(s)`)
     }
+
+    const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
 
     // Check if any call is in progress (after cleanup)
     const inProgressResult = await sql`
