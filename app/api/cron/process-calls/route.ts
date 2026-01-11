@@ -47,10 +47,8 @@ export async function GET(request: Request) {
     // This fixes the bug where stuck calls would block all future calls forever
     // Instead of just marking as failed, we do full processing via /api/calls/complete
     const stuckCalls = await sql`
-      SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId",
-             cl.conversation_id as "conversationId", cl.id as "callLogId"
+      SELECT sc.id, sc.phone, sc.name, sc.campaign_id as "campaignId"
       FROM scheduled_calls sc
-      LEFT JOIN call_logs cl ON cl.scheduled_call_id = sc.id
       WHERE sc.status = 'calling'
       AND sc.updated_at < NOW() - INTERVAL '5 minutes'
     `
@@ -58,19 +56,54 @@ export async function GET(request: Request) {
     const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
 
     for (const stuckCall of stuckCalls) {
+      // Check if there's already a successful call_log for this scheduled_call
+      // This handles the race condition where webhook arrives after cron starts processing
+      const existingSuccessLog = await sql`
+        SELECT id, conversation_id, outcome, email_sent
+        FROM call_logs
+        WHERE scheduled_call_id = ${stuckCall.id}
+        AND outcome IN ('answered', 'voicemail')
+        AND conversation_id IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `
+
+      if (existingSuccessLog.length > 0) {
+        // Already processed successfully by webhook - just update scheduled_call status
+        const successLog = existingSuccessLog[0]
+        console.log(`[Cron] Found existing successful call_log for ${stuckCall.phone}, outcome: ${successLog.outcome}`)
+        await sql`
+          UPDATE scheduled_calls
+          SET status = ${successLog.outcome}, updated_at = NOW()
+          WHERE id = ${stuckCall.id}
+        `
+        continue
+      }
+
+      // Get the most recent call_log (if any) to get conversation_id
+      const recentLog = await sql`
+        SELECT id, conversation_id
+        FROM call_logs
+        WHERE scheduled_call_id = ${stuckCall.id}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `
+      const callLogId = recentLog[0]?.id
+      const conversationId = recentLog[0]?.conversation_id
+
       let outcome: 'answered' | 'failed' = 'failed'
       let duration = 0
 
       // Query ElevenLabs API to get real status
-      if (stuckCall.conversationId && process.env.ELEVENLABS_API_KEY) {
+      if (conversationId && process.env.ELEVENLABS_API_KEY) {
         try {
           const response = await fetch(
-            `https://api.elevenlabs.io/v1/convai/conversations/${stuckCall.conversationId}`,
+            `https://api.elevenlabs.io/v1/convai/conversations/${conversationId}`,
             { headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY } }
           )
           if (response.ok) {
             const data = await response.json()
-            console.log(`[Cron] ElevenLabs status for ${stuckCall.conversationId}:`, data.status, data.call?.status)
+            console.log(`[Cron] ElevenLabs status for ${conversationId}:`, data.status, data.call?.status)
 
             // Determine outcome based on ElevenLabs status
             if (data.status === 'done' || data.call?.status === 'ended') {
@@ -92,8 +125,8 @@ export async function GET(request: Request) {
           body: JSON.stringify({
             scheduledCallId: stuckCall.id,
             campaignId: stuckCall.campaignId,
-            conversationId: stuckCall.conversationId,
-            callLogId: stuckCall.callLogId,
+            conversationId,
+            callLogId,
             duration,
             outcome,
             phone: stuckCall.phone,
