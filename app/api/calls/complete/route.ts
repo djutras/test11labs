@@ -166,22 +166,30 @@ export async function POST(request: Request) {
             }
 
             // Pause other pending calls for this prospect since we had a valid exchange
+            // BUT don't pause calls that were manually reactivated by user
             if (emailSent && body.phone) {
               try {
                 const futureData = await getClientFutureCallsByPhone(campaignId, body.phone)
                 if (futureData?.futureCalls) {
                   let pausedCount = 0
+                  let skippedCount = 0
                   for (const call of futureData.futureCalls) {
-                    if (call.status === 'pending') {
+                    // Only pause calls that are pending AND were NOT manually reactivated
+                    if (call.status === 'pending' && !call.manuallyReactivated) {
                       await updateScheduledCall(call.id, {
                         status: 'paused',
                         skippedReason: 'Paused - email sent after successful exchange'
                       })
                       pausedCount++
+                    } else if (call.status === 'pending' && call.manuallyReactivated) {
+                      skippedCount++
                     }
                   }
                   if (pausedCount > 0) {
                     console.log(`[CallComplete] Paused ${pausedCount} pending calls for ${body.phone}`)
+                  }
+                  if (skippedCount > 0) {
+                    console.log(`[CallComplete] Skipped ${skippedCount} manually reactivated calls for ${body.phone}`)
                   }
                 }
               } catch (pauseErr) {
