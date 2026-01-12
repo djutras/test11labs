@@ -30,6 +30,13 @@ export async function POST(request: Request) {
     }
 
     // Get campaign info
+    if (!callLog.campaignId) {
+      return NextResponse.json(
+        { error: 'Call log has no campaign associated' },
+        { status: 400 }
+      )
+    }
+
     const campaign = await getCampaignById(callLog.campaignId)
     if (!campaign) {
       return NextResponse.json(
