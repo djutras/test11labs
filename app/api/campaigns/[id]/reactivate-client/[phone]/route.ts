@@ -5,8 +5,69 @@ import { NextResponse } from 'next/server'
 import { getCampaignById } from '@/lib/db'
 import { neon } from '@neondatabase/serverless'
 
+// POST /api/campaigns/[campaignId]/reactivate-client/[phone]
+// Reactivates paused calls and returns JSON (for UI button)
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string; phone: string }> }
+) {
+  try {
+    const { id: campaignId, phone: encodedPhone } = await params
+    const phone = decodeURIComponent(encodedPhone)
+
+    const campaign = await getCampaignById(campaignId)
+    if (!campaign) {
+      return NextResponse.json(
+        { success: false, error: 'Campaign not found' },
+        { status: 404 }
+      )
+    }
+
+    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`
+    const phoneWithoutPlus = phone.replace(/^\+/, '')
+
+    const sql = neon(process.env.DATABASE_URL!)
+
+    const updatedCalls = await sql`
+      UPDATE scheduled_calls
+      SET status = 'pending',
+          skipped_reason = NULL,
+          updated_at = NOW()
+      WHERE campaign_id = ${campaignId}
+        AND (phone = ${normalizedPhone} OR phone = ${phoneWithoutPlus})
+        AND status = 'paused'
+      RETURNING id, name
+    `
+
+    if (updatedCalls.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'No paused calls to reactivate',
+        reactivatedCount: 0
+      })
+    }
+
+    const clientName = updatedCalls[0]?.name || phone
+    console.log(`[ReactivateClient] Reactivated ${updatedCalls.length} calls for ${clientName} (${phone}) in campaign ${campaignId}`)
+
+    return NextResponse.json({
+      success: true,
+      message: `Reactivated ${updatedCalls.length} call(s) for ${clientName}`,
+      reactivatedCount: updatedCalls.length,
+      clientName
+    })
+
+  } catch (error) {
+    console.error('[ReactivateClient] Error:', error)
+    return NextResponse.json(
+      { success: false, error: 'Failed to reactivate calls' },
+      { status: 500 }
+    )
+  }
+}
+
 // GET /api/campaigns/[campaignId]/reactivate-client/[phone]
-// Reactivates paused calls and shows confirmation page
+// Reactivates paused calls and shows confirmation page (for email links)
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string; phone: string }> }

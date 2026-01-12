@@ -1051,8 +1051,7 @@ export async function getClientFutureCallsByPhone(campaignId: string, phone: str
     // Get all future scheduled calls for this phone in this campaign
     const futureCalls = await db`
       SELECT id, name, phone, scheduled_at as "scheduledAt", status,
-             retry_count as "retryCount", created_at as "createdAt",
-             COALESCE(manually_reactivated, false) as "manuallyReactivated"
+             retry_count as "retryCount", created_at as "createdAt"
       FROM scheduled_calls
       WHERE campaign_id = ${campaignId}
         AND phone = ${phone}
@@ -1088,8 +1087,7 @@ export async function getClientFutureCallsByPhone(campaignId: string, phone: str
         scheduledAt: fc.scheduledAt,
         status: fc.status,
         retryCount: fc.retryCount,
-        createdAt: fc.createdAt,
-        manuallyReactivated: fc.manuallyReactivated || false
+        createdAt: fc.createdAt
       }))
     }
   } catch (error) {

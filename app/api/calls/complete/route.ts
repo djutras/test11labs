@@ -164,32 +164,33 @@ export async function POST(request: Request) {
             if (emailSent && callLogId) {
               await updateCallLog(callLogId, { emailSent: true })
             }
-
-            // Pause other pending calls for this prospect since we had a valid exchange
-            if (emailSent && body.phone) {
-              try {
-                const futureData = await getClientFutureCallsByPhone(campaignId, body.phone)
-                if (futureData?.futureCalls) {
-                  let pausedCount = 0
-                  for (const call of futureData.futureCalls) {
-                    if (call.status === 'pending') {
-                      await updateScheduledCall(call.id, {
-                        status: 'paused',
-                        skippedReason: 'Paused - email sent after successful exchange'
-                      })
-                      pausedCount++
-                    }
-                  }
-                  if (pausedCount > 0) {
-                    console.log(`[CallComplete] Paused ${pausedCount} pending calls for ${body.phone}`)
-                  }
-                }
-              } catch (pauseErr) {
-                console.error('[CallComplete] Error pausing future calls:', pauseErr)
-              }
-            }
           } catch (err) {
             console.error('[CallComplete] Error sending email:', err)
+          }
+        }
+
+        // Pause other pending calls for this prospect since we had a valid exchange
+        // This should happen regardless of whether the email was sent
+        if (hasValidExchanges && body.phone) {
+          try {
+            const futureData = await getClientFutureCallsByPhone(campaignId, body.phone)
+            if (futureData?.futureCalls) {
+              let pausedCount = 0
+              for (const call of futureData.futureCalls) {
+                if (call.status === 'pending') {
+                  await updateScheduledCall(call.id, {
+                    status: 'paused',
+                    skippedReason: 'Paused - successful exchange with contact'
+                  })
+                  pausedCount++
+                }
+              }
+              if (pausedCount > 0) {
+                console.log(`[CallComplete] Paused ${pausedCount} pending calls for ${body.phone}`)
+              }
+            }
+          } catch (pauseErr) {
+            console.error('[CallComplete] Error pausing future calls:', pauseErr)
           }
         }
       }

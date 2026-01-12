@@ -128,6 +128,40 @@ export default function CampaignDetailPage() {
     }
   }
 
+  const handlePauseContact = async (phone: string) => {
+    try {
+      const phoneForUrl = phone.replace(/^\+/, '')
+      const response = await fetch(`/api/campaigns/${campaignId}/pause-client/${phoneForUrl}`, {
+        method: 'POST'
+      })
+      const data = await response.json()
+      if (data.success) {
+        await loadCampaign()
+      } else {
+        setError(data.error || 'Failed to pause calls')
+      }
+    } catch (err) {
+      setError('Failed to pause calls')
+    }
+  }
+
+  const handleReactivateContact = async (phone: string) => {
+    try {
+      const phoneForUrl = phone.replace(/^\+/, '')
+      const response = await fetch(`/api/campaigns/${campaignId}/reactivate-client/${phoneForUrl}`, {
+        method: 'POST'
+      })
+      const data = await response.json()
+      if (data.success) {
+        await loadCampaign()
+      } else {
+        setError(data.error || 'Failed to reactivate calls')
+      }
+    } catch (err) {
+      setError('Failed to reactivate calls')
+    }
+  }
+
   const openTranscriptModal = (callLog: CallLogData, name: string) => {
     setSelectedTranscript(callLog)
     setSelectedCallName(name)
@@ -618,8 +652,28 @@ export default function CampaignDetailPage() {
                     <td className="py-3 px-4 text-sm">{call.retryCount}</td>
                     <td className="py-3 px-4">
                       <div className="flex gap-2">
-                        {/* Call button for pending calls */}
-                        {(call.status === 'pending' || call.status === 'no_answer' || call.status === 'failed') && (
+                        {/* Pause button for pending calls */}
+                        {call.status === 'pending' && (
+                          <button
+                            onClick={() => handlePauseContact(call.phone)}
+                            className="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 rounded text-xs transition"
+                            title={language === 'fr' ? 'Mettre en pause tous les appels de ce contact' : 'Pause all calls for this contact'}
+                          >
+                            {language === 'fr' ? 'Suspendre' : 'Pause'}
+                          </button>
+                        )}
+                        {/* Reactivate button for paused calls */}
+                        {call.status === 'paused' && (
+                          <button
+                            onClick={() => handleReactivateContact(call.phone)}
+                            className="px-2 py-1 bg-green-600 hover:bg-green-500 rounded text-xs transition"
+                            title={language === 'fr' ? 'Réactiver tous les appels de ce contact' : 'Reactivate all calls for this contact'}
+                          >
+                            {language === 'fr' ? 'Réactiver' : 'Reactivate'}
+                          </button>
+                        )}
+                        {/* Call button for failed/no_answer calls */}
+                        {(call.status === 'no_answer' || call.status === 'failed') && (
                           <button
                             onClick={() => handleMakeCall(call.id, call.phone, call.name)}
                             disabled={callingId !== null}
@@ -630,11 +684,11 @@ export default function CampaignDetailPage() {
                                 ? 'bg-gray-600 cursor-not-allowed'
                                 : 'bg-orange-600 hover:bg-orange-500'
                             }`}
-                            title={language === 'fr' ? 'Lancer l\'appel' : 'Make call'}
+                            title={language === 'fr' ? 'Relancer l\'appel' : 'Retry call'}
                           >
                             {callingId === call.id
                               ? (language === 'fr' ? 'Appel...' : 'Calling...')
-                              : (language === 'fr' ? 'Appeler' : 'Call')}
+                              : (language === 'fr' ? 'Réessayer' : 'Retry')}
                           </button>
                         )}
                         {/* Transcript/Audio buttons when call completed */}
