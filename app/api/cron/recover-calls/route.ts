@@ -28,8 +28,9 @@ export async function GET(request: Request) {
     const sql = neon(process.env.DATABASE_URL)
     const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
 
-    // Find calls with conversation_id but missing transcript
-    // Skip calls that already have transcript (voicemails won't get email, that's OK)
+    // Find calls that need recovery:
+    // 1. Calls with conversation_id but missing transcript
+    // 2. Calls with transcript + outcome='answered' but email_sent=false
     // Window: 10 minutes to 24 hours old (not too recent, not too old)
     const callsToRecover = await sql`
       SELECT
@@ -45,11 +46,14 @@ export async function GET(request: Request) {
       FROM scheduled_calls sc
       JOIN call_logs cl ON cl.scheduled_call_id = sc.id
       WHERE cl.conversation_id IS NOT NULL
-        AND cl.transcript IS NULL
+        AND (
+          cl.transcript IS NULL
+          OR (cl.transcript IS NOT NULL AND cl.email_sent = false AND cl.outcome = 'answered')
+        )
         AND sc.updated_at < NOW() - INTERVAL '10 minutes'
         AND sc.updated_at > NOW() - INTERVAL '24 hours'
       ORDER BY sc.updated_at ASC
-      LIMIT 3
+      LIMIT 5
     `
 
     if (callsToRecover.length === 0) {
