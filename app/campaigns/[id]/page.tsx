@@ -439,13 +439,18 @@ export default function CampaignDetailPage() {
   }
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleString(language === 'fr' ? 'fr-CA' : 'en-CA', {
+    const date = new Date(dateStr)
+    // Force conversion to Montreal timezone
+    const options: Intl.DateTimeFormatOptions = {
       timeZone: 'America/Toronto',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
-    })
+      minute: '2-digit',
+      hour12: false
+    }
+    const formatter = new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', options)
+    return formatter.format(date)
   }
 
   return (
