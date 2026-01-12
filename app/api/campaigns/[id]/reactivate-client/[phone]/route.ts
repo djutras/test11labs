@@ -64,12 +64,10 @@ export async function GET(
     const clientName = pausedCalls[0]?.name || phone
 
     // Reactivate all paused calls - use RETURNING to verify the update worked
-    // Set manually_reactivated = true to prevent auto-pause after successful calls
     const updatedCalls = await sql`
       UPDATE scheduled_calls
       SET status = 'pending',
           skipped_reason = NULL,
-          manually_reactivated = true,
           updated_at = NOW()
       WHERE campaign_id = ${campaignId}
         AND (phone = ${normalizedPhone} OR phone = ${phoneWithoutPlus})
