@@ -1,6 +1,7 @@
 // app/api/cron/recover-calls/route.ts
 // Recovery job for calls that completed but missed webhook processing
 // Runs every 15 minutes, finds calls with conversation_id but no transcript/email
+// Also handles calls marked as 'failed' that actually have transcripts on ElevenLabs
 
 import { NextResponse } from 'next/server'
 import { neon } from '@neondatabase/serverless'
@@ -29,15 +30,17 @@ export async function GET(request: Request) {
     const baseUrl = process.env.URL || process.env.DEPLOY_URL || 'http://localhost:3000'
 
     // Find calls that need recovery:
-    // 1. Calls with conversation_id but missing transcript
+    // 1. Calls with conversation_id but missing transcript (including 'failed' status)
     // 2. Calls with transcript + outcome='answered' but email_sent=false
-    // Window: 10 minutes to 24 hours old (not too recent, not too old)
+    // 3. Calls with 'pending' outcome that have a conversation_id (webhook never fired)
+    // Window: 5 minutes to 48 hours old (reduced min time, extended max time)
     const callsToRecover = await sql`
-      SELECT
+      SELECT DISTINCT ON (cl.conversation_id)
         sc.id,
         sc.campaign_id as "campaignId",
         sc.phone,
         sc.name,
+        sc.status as "scheduledStatus",
         cl.id as "callLogId",
         cl.conversation_id as "conversationId",
         cl.transcript,
@@ -49,11 +52,12 @@ export async function GET(request: Request) {
         AND (
           cl.transcript IS NULL
           OR (cl.transcript IS NOT NULL AND cl.email_sent = false AND cl.outcome = 'answered')
+          OR cl.outcome = 'pending'
         )
-        AND sc.updated_at < NOW() - INTERVAL '10 minutes'
-        AND sc.updated_at > NOW() - INTERVAL '24 hours'
-      ORDER BY sc.updated_at ASC
-      LIMIT 5
+        AND cl.created_at < NOW() - INTERVAL '5 minutes'
+        AND cl.created_at > NOW() - INTERVAL '48 hours'
+      ORDER BY cl.conversation_id, cl.created_at DESC
+      LIMIT 10
     `
 
     if (callsToRecover.length === 0) {
@@ -68,7 +72,35 @@ export async function GET(request: Request) {
 
     for (const call of callsToRecover) {
       try {
-        console.log(`[RecoverCalls] Processing ${call.phone} (conversation: ${call.conversationId})`)
+        console.log(`[RecoverCalls] Processing ${call.phone} (conversation: ${call.conversationId}, scheduledStatus: ${call.scheduledStatus})`)
+
+        // First, verify with ElevenLabs API that the call has a transcript
+        // This catches cases where the webhook never fired but the call actually completed
+        let hasTranscriptOnElevenLabs = false
+        if (process.env.ELEVENLABS_API_KEY && !call.transcript) {
+          try {
+            const elevenLabsResponse = await fetch(
+              `https://api.elevenlabs.io/v1/convai/conversations/${call.conversationId}`,
+              {
+                headers: { 'xi-api-key': process.env.ELEVENLABS_API_KEY }
+              }
+            )
+            if (elevenLabsResponse.ok) {
+              const data = await elevenLabsResponse.json()
+              hasTranscriptOnElevenLabs = data.transcript && data.transcript.length > 0
+              console.log(`[RecoverCalls] ElevenLabs check: hasTranscript=${hasTranscriptOnElevenLabs}, status=${data.status}`)
+            }
+          } catch (err) {
+            console.error(`[RecoverCalls] Error checking ElevenLabs API:`, err)
+          }
+        }
+
+        // Skip if no transcript available anywhere
+        if (!call.transcript && !hasTranscriptOnElevenLabs) {
+          console.log(`[RecoverCalls] Skipping ${call.phone} - no transcript available`)
+          results.push({ phone: call.phone, status: 'no_transcript' })
+          continue
+        }
 
         // Call /api/calls/complete to do the heavy lifting
         const response = await fetch(`${baseUrl}/api/calls/complete`, {
