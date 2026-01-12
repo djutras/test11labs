@@ -440,6 +440,7 @@ export default function CampaignDetailPage() {
 
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleString(language === 'fr' ? 'fr-CA' : 'en-CA', {
+      timeZone: 'America/Toronto',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
