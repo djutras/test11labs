@@ -41,12 +41,15 @@ export async function GET(request: Request, { params }: RouteParams) {
     const callLogs = await getCallLogsByCampaign(id)
 
     // Create a map of scheduled call ID to call log for quick lookup
-    // Since callLogs are ordered by created_at DESC (newest first),
-    // only keep the first (newest) call log for each scheduled call
+    // Prioritize call logs that have transcripts over those without
     const callLogMap = new Map<string, CallLog>()
     for (const log of callLogs) {
-      if (log.scheduledCallId && !callLogMap.has(log.scheduledCallId)) {
-        callLogMap.set(log.scheduledCallId, log)
+      if (log.scheduledCallId) {
+        const existing = callLogMap.get(log.scheduledCallId)
+        // Keep this log if: no existing, or this one has transcript and existing doesn't
+        if (!existing || (log.transcript && !existing.transcript)) {
+          callLogMap.set(log.scheduledCallId, log)
+        }
       }
     }
 
