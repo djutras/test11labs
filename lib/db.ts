@@ -23,6 +23,7 @@ export interface Client {
   id: string
   name: string
   phone: string
+  email?: string
   accountant?: string
   lastInteraction?: string
   campaignId?: string
@@ -263,6 +264,10 @@ export async function initializeDatabase() {
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'scheduled_calls' AND column_name = 'updated_at') THEN
           ALTER TABLE scheduled_calls ADD COLUMN updated_at TIMESTAMP DEFAULT NOW();
         END IF;
+        -- Add email column to outbound_clients if missing
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'outbound_clients' AND column_name = 'email') THEN
+          ALTER TABLE outbound_clients ADD COLUMN email VARCHAR(255);
+        END IF;
       END $$;
     `
 
@@ -282,7 +287,7 @@ export async function findClientByPhone(phone: string): Promise<Client | null> {
     const normalizedPhone = phone.replace(/[\s\-\(\)]/g, '')
     const db = getDb()
     const result = await db`
-      SELECT id, name, phone, accountant, last_interaction as "lastInteraction",
+      SELECT id, name, phone, email, accountant, last_interaction as "lastInteraction",
              campaign_id as "campaignId", is_active as "isActive", tags, notes,
              created_at as "createdAt", updated_at as "updatedAt"
       FROM outbound_clients
@@ -302,15 +307,16 @@ export async function createClient(client: Omit<Client, 'id' | 'createdAt' | 'up
   try {
     const db = getDb()
     const result = await db`
-      INSERT INTO outbound_clients (name, phone, accountant, campaign_id, is_active, tags, notes)
-      VALUES (${client.name}, ${client.phone}, ${client.accountant || null},
+      INSERT INTO outbound_clients (name, phone, email, accountant, campaign_id, is_active, tags, notes)
+      VALUES (${client.name}, ${client.phone}, ${client.email || null}, ${client.accountant || null},
               ${client.campaignId || null}, ${client.isActive ?? true},
               ${client.tags || []}, ${client.notes || null})
       ON CONFLICT (phone) DO UPDATE SET
         name = EXCLUDED.name,
+        email = COALESCE(EXCLUDED.email, outbound_clients.email),
         campaign_id = COALESCE(EXCLUDED.campaign_id, outbound_clients.campaign_id),
         updated_at = NOW()
-      RETURNING id, name, phone, accountant, campaign_id as "campaignId",
+      RETURNING id, name, phone, email, accountant, campaign_id as "campaignId",
                 is_active as "isActive", tags, notes,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
@@ -327,12 +333,13 @@ export async function updateClient(id: string, updates: Partial<Client>): Promis
     const result = await db`
       UPDATE outbound_clients SET
         name = COALESCE(${updates.name || null}, name),
+        email = COALESCE(${updates.email || null}, email),
         is_active = COALESCE(${updates.isActive ?? null}, is_active),
         tags = COALESCE(${updates.tags || null}, tags),
         notes = COALESCE(${updates.notes || null}, notes),
         updated_at = NOW()
       WHERE id = ${id}
-      RETURNING id, name, phone, accountant, campaign_id as "campaignId",
+      RETURNING id, name, phone, email, accountant, campaign_id as "campaignId",
                 is_active as "isActive", tags, notes,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
@@ -347,7 +354,7 @@ export async function getClientById(id: string): Promise<Client | null> {
   try {
     const db = getDb()
     const result = await db`
-      SELECT id, name, phone, accountant, last_interaction as "lastInteraction",
+      SELECT id, name, phone, email, accountant, last_interaction as "lastInteraction",
              campaign_id as "campaignId", is_active as "isActive", tags, notes,
              created_at as "createdAt", updated_at as "updatedAt"
       FROM outbound_clients WHERE id = ${id}
@@ -590,19 +597,21 @@ export async function updateScheduledCall(id: string, updates: Partial<Scheduled
   }
 }
 
-export async function getScheduledCallsByCampaign(campaignId: string): Promise<ScheduledCall[]> {
+export async function getScheduledCallsByCampaign(campaignId: string): Promise<(ScheduledCall & { email?: string })[]> {
   try {
     const db = getDb()
     const result = await db`
-      SELECT id, campaign_id as "campaignId", client_id as "clientId", phone, name,
-             first_message as "firstMessage", full_prompt as "fullPrompt",
-             scheduled_at as "scheduledAt", status, retry_count as "retryCount",
-             skipped_reason as "skippedReason", created_at as "createdAt"
-      FROM scheduled_calls
-      WHERE campaign_id = ${campaignId}
-      ORDER BY scheduled_at ASC
+      SELECT sc.id, sc.campaign_id as "campaignId", sc.client_id as "clientId", sc.phone, sc.name,
+             sc.first_message as "firstMessage", sc.full_prompt as "fullPrompt",
+             sc.scheduled_at as "scheduledAt", sc.status, sc.retry_count as "retryCount",
+             sc.skipped_reason as "skippedReason", sc.created_at as "createdAt",
+             oc.email
+      FROM scheduled_calls sc
+      LEFT JOIN outbound_clients oc ON sc.phone = oc.phone
+      WHERE sc.campaign_id = ${campaignId}
+      ORDER BY sc.scheduled_at ASC
     `
-    return result as ScheduledCall[]
+    return result as (ScheduledCall & { email?: string })[]
   } catch (error) {
     console.error('[DB] Error getting scheduled calls:', error)
     return []

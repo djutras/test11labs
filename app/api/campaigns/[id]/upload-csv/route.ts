@@ -158,6 +158,7 @@ export async function POST(request: Request, { params }: RouteParams) {
         await createClient({
           name: contact.name || 'Unknown',
           phone: contact.phone,
+          email: contact.email,
           campaignId,
           isActive: true
         })

@@ -20,6 +20,7 @@ interface ScheduledCall {
   id: string
   phone: string
   name: string | null
+  email?: string | null
   firstMessage: string | null
   scheduledAt: string
   status: string
@@ -555,8 +556,8 @@ export default function CampaignDetailPage() {
         <h2 className="text-xl font-semibold mb-4">{language === 'fr' ? 'Importer des contacts' : 'Upload Contacts'}</h2>
         <p className="text-gray-400 text-sm mb-4">
           {language === 'fr'
-            ? 'Importez un fichier CSV avec les colonnes : phone (requis), name (optionnel), subject (optionnel)'
-            : 'Upload a CSV file with columns: phone (required), name (optional), subject (optional)'}
+            ? 'Importez un fichier CSV avec les colonnes : phone (requis), name (optionnel), email (optionnel), subject (optionnel)'
+            : 'Upload a CSV file with columns: phone (required), name (optional), email (optional), subject (optional)'}
         </p>
 
         <div className="flex items-center gap-4">
@@ -631,6 +632,7 @@ export default function CampaignDetailPage() {
                 <tr className="border-b border-gray-700">
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('name', language)}</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('phone', language)}</th>
+                  <th className="text-left py-3 px-4 text-gray-400 font-medium">Email</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Prévu' : 'Scheduled'}</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{t('status', language)}</th>
                   <th className="text-left py-3 px-4 text-gray-400 font-medium">{language === 'fr' ? 'Tentatives' : 'Retries'}</th>
@@ -649,6 +651,7 @@ export default function CampaignDetailPage() {
                       </Link>
                     </td>
                     <td className="py-3 px-4 font-mono text-sm">{call.phone}</td>
+                    <td className="py-3 px-4 text-sm text-gray-400">{call.email || '-'}</td>
                     <td className="py-3 px-4 text-sm">{formatDate(call.scheduledAt)}</td>
                     <td className="py-3 px-4">
                       <span className={`px-2 py-1 rounded text-xs ${getStatusColor(call.status)}`}>

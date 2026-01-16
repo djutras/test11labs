@@ -5,6 +5,7 @@
 export interface CsvContact {
   phone: string
   name?: string
+  email?: string
   subject?: string
 }
 
@@ -51,6 +52,9 @@ export function parseCsv(csvContent: string): ParseResult {
   )
   const nameIndex = headers.findIndex(h =>
     h === 'name' || h === 'nom' || h === 'client' || h === 'client_name' || h === 'clientname'
+  )
+  const emailIndex = headers.findIndex(h =>
+    h === 'email' || h === 'courriel' || h === 'e-mail' || h === 'mail' || h === 'email_address'
   )
   const subjectIndex = headers.findIndex(h =>
     h === 'subject' || h === 'sujet' || h === 'reason' || h === 'raison' || h === 'topic'
@@ -99,6 +103,7 @@ export function parseCsv(csvContent: string): ParseResult {
       const contact: CsvContact = {
         phone,
         name: nameIndex >= 0 ? values[nameIndex]?.trim() || undefined : undefined,
+        email: emailIndex >= 0 ? values[emailIndex]?.trim() || undefined : undefined,
         subject: subjectIndex >= 0 ? values[subjectIndex]?.trim() || undefined : undefined
       }
 
@@ -194,8 +199,8 @@ function normalizePhone(phone: string): string | null {
  * Generate a sample CSV template
  */
 export function generateCsvTemplate(): string {
-  return `phone,name,subject
-+15145551234,John Smith,Tax return follow-up
-+15145555678,Marie Tremblay,Invoice question
-5145559012,Pierre Dubois,New client consultation`
+  return `phone,name,email,subject
++15145551234,John Smith,john.smith@email.com,Tax return follow-up
++15145555678,Marie Tremblay,marie.tremblay@email.com,Invoice question
+5145559012,Pierre Dubois,pierre.dubois@email.com,New client consultation`
 }
