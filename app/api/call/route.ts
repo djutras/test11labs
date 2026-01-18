@@ -74,7 +74,7 @@ RÈGLES:
     // Forward call to human instead of ElevenLabs AI
     const response = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Dial callerId="${to}">${FORWARD_PHONE_NUMBER}</Dial>
+  <Dial>${FORWARD_PHONE_NUMBER}</Dial>
 </Response>`
 
     return twiml(response)
