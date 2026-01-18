@@ -31,7 +31,7 @@ export default function NewCampaignPage() {
   const [creatorEmail, setCreatorEmail] = useState('')
   const [mode, setMode] = useState<'production' | 'test'>('production')
   const [callsPerDayPerContact, setCallsPerDayPerContact] = useState(1)
-  const [campaignDurationDays, setCampaignDurationDays] = useState(4)
+  const [campaignDurationDays, setCampaignDurationDays] = useState(5)
   const [callDays, setCallDays] = useState<string[]>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday'])
   const [callStartHour, setCallStartHour] = useState(9)
   const [callEndHour, setCallEndHour] = useState(19)
@@ -312,25 +312,39 @@ export default function NewCampaignPage() {
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  {language === 'fr' ? 'Durée de la campagne (semaines)' : 'Campaign duration (weeks)'}
+                  {language === 'fr' ? 'Durée de la campagne' : 'Campaign duration'}
                 </label>
                 <select
                   value={campaignDurationDays}
                   onChange={(e) => setCampaignDurationDays(parseInt(e.target.value))}
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
                 >
-                  {[4, 12, 24, 48].map((n) => (
-                    <option key={n} value={n}>
-                      {n} {language === 'fr' ? 'semaines' : 'weeks'}
-                    </option>
-                  ))}
+                  <optgroup label={language === 'fr' ? 'Jours (appels quotidiens)' : 'Days (daily calls)'}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                      <option key={n} value={n}>
+                        {n} {language === 'fr' ? (n === 1 ? 'jour' : 'jours') : (n === 1 ? 'day' : 'days')}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label={language === 'fr' ? 'Semaines (appels hebdomadaires)' : 'Weeks (weekly calls)'}>
+                    {[{weeks: 4, days: 28}, {weeks: 12, days: 84}, {weeks: 24, days: 168}, {weeks: 48, days: 336}].map((item) => (
+                      <option key={item.days} value={item.days}>
+                        {item.weeks} {language === 'fr' ? 'semaines' : 'weeks'}
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
             </div>
             <p className="text-gray-400 text-sm mt-2">
-              {language === 'fr'
-                ? `Chaque contact sera appelé 1 fois par semaine pendant ${campaignDurationDays} semaines = ${campaignDurationDays} appels par contact`
-                : `Each contact will be called once per week for ${campaignDurationDays} weeks = ${campaignDurationDays} calls per contact`}
+              {campaignDurationDays <= 10
+                ? (language === 'fr'
+                    ? `Chaque contact sera appelé ${callsPerDayPerContact} fois par jour pendant ${campaignDurationDays} jours = ${callsPerDayPerContact * campaignDurationDays} appels par contact`
+                    : `Each contact will be called ${callsPerDayPerContact} time(s) per day for ${campaignDurationDays} days = ${callsPerDayPerContact * campaignDurationDays} calls per contact`)
+                : (language === 'fr'
+                    ? `Chaque contact sera appelé 1 fois par semaine pendant ${campaignDurationDays / 7} semaines = ${campaignDurationDays / 7} appels par contact`
+                    : `Each contact will be called once per week for ${campaignDurationDays / 7} weeks = ${campaignDurationDays / 7} calls per contact`)
+              }
             </p>
           </div>
 

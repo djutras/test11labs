@@ -186,6 +186,13 @@ export function calculateMultiDaySchedule(options: ScheduleOptions): MultiDaySch
   const callsPerDay = campaign.callsPerDayPerContact ?? 1
   const durationDays = campaign.campaignDurationDays ?? 5
 
+  // Determine if this is weekly scheduling (durationDays > 10 means weeks were selected)
+  // Weekly: values are 28, 84, 168, 336 (4, 12, 24, 48 weeks in days)
+  // Daily: values are 1-10
+  const isWeeklyScheduling = durationDays > 10
+  const numberOfCallPeriods = isWeeklyScheduling ? Math.floor(durationDays / 7) : durationDays
+  const dayInterval = isWeeklyScheduling ? 7 : 1
+
   const results: MultiDayScheduleResult[] = []
   const now = startFrom || new Date()
 
@@ -215,7 +222,7 @@ export function calculateMultiDaySchedule(options: ScheduleOptions): MultiDaySch
   // Find first valid day
   searchDate = findNextValidTime(searchDate, allowedDays, startHour, endHour, campaign.timezone)
 
-  for (let dayIndex = 0; dayIndex < durationDays && campaignDays.length < 30; dayIndex++) {
+  for (let dayIndex = 0; dayIndex < numberOfCallPeriods && campaignDays.length < 100; dayIndex++) {
     // Check if this day is valid
     const dayOfWeek = getDayInTimezone(searchDate, campaign.timezone)
 
@@ -228,17 +235,17 @@ export function calculateMultiDaySchedule(options: ScheduleOptions): MultiDaySch
       dayIndex-- // Don't count this as a campaign day
     }
 
-    // Move to next week (7 days) for weekly call scheduling
-    searchDate = addDays(searchDate, 7)
+    // Move to next day or next week based on scheduling type
+    searchDate = addDays(searchDate, dayInterval)
     searchDate = setHourInTimezone(searchDate, startHour, campaign.timezone)
 
     // Safety check to avoid infinite loop
-    if (campaignDays.length >= durationDays) break
+    if (campaignDays.length >= numberOfCallPeriods) break
   }
 
   // Determine if we should use time rotation
-  // Only for single-call-per-day campaigns with multiple days
-  const useTimeRotation = callsPerDay === 1 && durationDays > 1
+  // Only for single-call-per-day campaigns with multiple days/weeks
+  const useTimeRotation = callsPerDay === 1 && numberOfCallPeriods > 1
 
   // Now schedule calls for each campaign day
   for (let dayIdx = 0; dayIdx < campaignDays.length; dayIdx++) {
