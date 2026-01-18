@@ -60,7 +60,7 @@ Reponds UNIQUEMENT avec le prompt, sans explication ni formatage additionnel.`
         'X-Title': 'Compta IA Campaign Manager'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-001',
+        model: 'google/gemini-2.0-flash-exp',
         messages: [
           {
             role: 'user',
