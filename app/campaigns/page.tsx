@@ -168,7 +168,6 @@ export default function CampaignsPage() {
           <p className="text-gray-400 mt-1">{t('campaignsSubtitle', language)}</p>
         </div>
         <div className="flex gap-4 items-center">
-          <LanguageSelector />
           <Link
             href="/"
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition"
@@ -193,6 +192,7 @@ export default function CampaignsPage() {
           >
             + {t('newCampaign', language)}
           </Link>
+          <LanguageSelector />
         </div>
       </div>
 
