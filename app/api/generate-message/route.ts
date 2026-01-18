@@ -76,7 +76,7 @@ Reponds UNIQUEMENT avec le prompt, sans explication ni formatage additionnel.`
       const errorText = await response.text()
       console.error('[API] OpenRouter error:', errorText)
       return NextResponse.json(
-        { success: false, error: 'Failed to generate message' },
+        { success: false, error: `OpenRouter error: ${errorText}` },
         { status: 500 }
       )
     }
