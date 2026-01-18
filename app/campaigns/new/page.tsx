@@ -31,7 +31,7 @@ export default function NewCampaignPage() {
   const [creatorEmail, setCreatorEmail] = useState('')
   const [mode, setMode] = useState<'production' | 'test'>('production')
   const [callsPerDayPerContact, setCallsPerDayPerContact] = useState(1)
-  const [campaignDurationDays, setCampaignDurationDays] = useState(5)
+  const [campaignDurationDays, setCampaignDurationDays] = useState(4)
   const [callDays, setCallDays] = useState<string[]>(['monday', 'tuesday', 'wednesday', 'thursday', 'friday'])
   const [callStartHour, setCallStartHour] = useState(9)
   const [callEndHour, setCallEndHour] = useState(19)
@@ -312,16 +312,16 @@ export default function NewCampaignPage() {
               </div>
               <div>
                 <label className="block text-sm text-gray-400 mb-1">
-                  {language === 'fr' ? 'Durée de la campagne (jours)' : 'Campaign duration (days)'}
+                  {language === 'fr' ? 'Durée de la campagne (semaines)' : 'Campaign duration (weeks)'}
                 </label>
                 <select
                   value={campaignDurationDays}
                   onChange={(e) => setCampaignDurationDays(parseInt(e.target.value))}
                   className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-500"
                 >
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  {[4, 12, 24, 48].map((n) => (
                     <option key={n} value={n}>
-                      {n} {language === 'fr' ? (n === 1 ? 'jour' : 'jours') : (n === 1 ? 'day' : 'days')}
+                      {n} {language === 'fr' ? 'semaines' : 'weeks'}
                     </option>
                   ))}
                 </select>
@@ -329,8 +329,8 @@ export default function NewCampaignPage() {
             </div>
             <p className="text-gray-400 text-sm mt-2">
               {language === 'fr'
-                ? `Chaque contact sera appelé ${callsPerDayPerContact} fois par jour pendant ${campaignDurationDays} jours = ${callsPerDayPerContact * campaignDurationDays} appels par contact`
-                : `Each contact will be called ${callsPerDayPerContact} time(s) per day for ${campaignDurationDays} days = ${callsPerDayPerContact * campaignDurationDays} calls per contact`}
+                ? `Chaque contact sera appelé 1 fois par semaine pendant ${campaignDurationDays} semaines = ${campaignDurationDays} appels par contact`
+                : `Each contact will be called once per week for ${campaignDurationDays} weeks = ${campaignDurationDays} calls per contact`}
             </p>
           </div>
 

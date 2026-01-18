@@ -20,6 +20,33 @@ interface MultiDayScheduleResult {
 }
 
 /**
+ * Time slot definitions for rotating start times across campaign days
+ * Each slot represents a fraction of the calling window where calls will start
+ *
+ * For single-call-per-day campaigns, we rotate through these slots:
+ * - Day 1: Morning (start at beginning of window)
+ * - Day 2: Afternoon (start at 30% into window)
+ * - Day 3: Late afternoon (start at 55% into window)
+ * - Day 4: Evening (start at 75% into window)
+ * - Day 5+: Cycle repeats
+ */
+const TIME_ROTATION_SLOTS = [
+  { name: 'morning', startFraction: 0 },
+  { name: 'afternoon', startFraction: 0.30 },
+  { name: 'late_afternoon', startFraction: 0.55 },
+  { name: 'evening', startFraction: 0.75 }
+]
+
+/**
+ * Get the time slot for a specific day in the campaign
+ * Days cycle through 4 slots: morning -> afternoon -> late_afternoon -> evening -> morning...
+ */
+function getTimeSlotForDay(dayNumber: number): { name: string; startFraction: number } {
+  const slotIndex = (dayNumber - 1) % 4
+  return TIME_ROTATION_SLOTS[slotIndex]
+}
+
+/**
  * Calculate scheduled times for a batch of contacts
  * Spreads calls evenly across allowed hours and days
  *
@@ -201,18 +228,29 @@ export function calculateMultiDaySchedule(options: ScheduleOptions): MultiDaySch
       dayIndex-- // Don't count this as a campaign day
     }
 
-    // Move to next day
-    searchDate = addDays(searchDate, 1)
+    // Move to next week (7 days) for weekly call scheduling
+    searchDate = addDays(searchDate, 7)
     searchDate = setHourInTimezone(searchDate, startHour, campaign.timezone)
 
     // Safety check to avoid infinite loop
     if (campaignDays.length >= durationDays) break
   }
 
+  // Determine if we should use time rotation
+  // Only for single-call-per-day campaigns with multiple days
+  const useTimeRotation = callsPerDay === 1 && durationDays > 1
+
   // Now schedule calls for each campaign day
   for (let dayIdx = 0; dayIdx < campaignDays.length; dayIdx++) {
-    const dayStart = campaignDays[dayIdx]
+    let dayStart = campaignDays[dayIdx]
     const dayNumber = dayIdx + 1
+
+    // Apply time rotation for single-call campaigns
+    if (useTimeRotation) {
+      const timeSlot = getTimeSlotForDay(dayNumber)
+      const offsetMinutes = Math.floor(windowMinutes * timeSlot.startFraction)
+      dayStart = new Date(dayStart.getTime() + offsetMinutes * 60 * 1000)
+    }
 
     // For each contact, schedule callsPerDay calls on this day
     for (let callNum = 1; callNum <= callsPerDay; callNum++) {
