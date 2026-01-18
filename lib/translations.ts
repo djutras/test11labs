@@ -105,6 +105,18 @@ export const translations = {
     en: 'Set up a new call campaign',
     fr: 'Configurer une nouvelle campagne d\'appels'
   },
+  phoneNumbersInfo: {
+    en: 'Phone Numbers',
+    fr: 'Numéros de téléphone'
+  },
+  inboundForwardTo: {
+    en: 'Inbound calls forwarded to',
+    fr: 'Appels entrants transférés au'
+  },
+  outboundCallsFrom: {
+    en: 'Outbound calls from',
+    fr: 'Appels sortants depuis'
+  },
   campaignName: {
     en: 'Campaign Name',
     fr: 'Nom de la campagne'

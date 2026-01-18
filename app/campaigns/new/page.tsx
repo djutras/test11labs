@@ -189,6 +189,23 @@ export default function NewCampaignPage() {
       {/* Form */}
       <form onSubmit={handleSubmit} className="max-w-2xl">
         <div className="bg-gray-800 rounded-lg p-6 space-y-6">
+          {/* Phone Numbers Info */}
+          <div className="bg-blue-900/30 border border-blue-700 rounded-lg p-4">
+            <h3 className="text-sm font-medium text-blue-300 mb-3">
+              {t('phoneNumbersInfo', language)}
+            </h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-400">{t('inboundForwardTo', language)}:</span>
+                <span className="ml-2 font-mono text-white">514-564-0115</span>
+              </div>
+              <div>
+                <span className="text-gray-400">{t('outboundCallsFrom', language)}:</span>
+                <span className="ml-2 font-mono text-white">438-299-8880</span>
+              </div>
+            </div>
+          </div>
+
           {/* Campaign Name */}
           <div>
             <label className="block text-sm font-medium mb-2">{t('campaignName', language)} *</label>

@@ -5,6 +5,7 @@ import { NextResponse } from 'next/server'
 import { findClientByPhone } from '@/lib/db'
 
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID || 'agent_4901kd1rcehff86917zw59fddfkv'
+const FORWARD_PHONE_NUMBER = process.env.FORWARD_PHONE_NUMBER || '+15145640115'
 
 // Twilio répond avec TwiML (XML)
 function twiml(content: string): NextResponse {
@@ -70,19 +71,10 @@ RÈGLES:
       firstMessage = `Bonjour! Ici Nicolas de Compta I A. À qui ai-je le plaisir de parler?`
     }
 
-    // Construire le TwiML pour connecter à ElevenLabs
+    // Forward call to human instead of ElevenLabs AI
     const response = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Connect>
-    <ConversationRelay
-      url="wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${ELEVENLABS_AGENT_ID}"
-      dtmfDetection="true"
-      interruptible="true"
-      voice="male">
-      <Parameter name="full_prompt" value="${escapeXml(fullPrompt)}"/>
-      <Parameter name="first_message" value="${escapeXml(firstMessage)}"/>
-    </ConversationRelay>
-  </Connect>
+  <Dial callerId="${to}">${FORWARD_PHONE_NUMBER}</Dial>
 </Response>`
 
     return twiml(response)
