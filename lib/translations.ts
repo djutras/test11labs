@@ -62,8 +62,8 @@ export const translations = {
     fr: 'Créer une campagne'
   },
   newCampaign: {
-    en: 'New Campaign',
-    fr: 'Nouvelle campagne'
+    en: 'New Call',
+    fr: 'Nouvel appel'
   },
   noCampaigns: {
     en: 'No campaigns yet',
