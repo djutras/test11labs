@@ -64,15 +64,19 @@ export default function NewCampaignPage() {
   const generateWithGemini = async (type: 'first_message' | 'full_prompt') => {
     const setGenerating = type === 'first_message' ? setGeneratingFirstMessage : setGeneratingFullPrompt
     const setMessage = type === 'first_message' ? setFirstMessage : setFullPrompt
+    const currentValue = type === 'first_message' ? firstMessage : fullPrompt
 
     setGenerating(true)
     try {
+      // Use textarea content as context if available, otherwise use campaign name
+      const context = currentValue.trim() || (name ? `Campagne: ${name}` : '')
+
       const response = await fetch('/api/generate-message', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type,
-          context: name ? `Campagne: ${name}` : ''
+          context
         })
       })
 

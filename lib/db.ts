@@ -100,6 +100,40 @@ export interface DncEntry {
 }
 
 // ============================================
+// EMAIL CAMPAIGN INTERFACES
+// ============================================
+
+export interface EmailCampaign {
+  id: string
+  name: string
+  creatorEmail: string
+  subject: string
+  body: string
+  sendDays: string[]
+  sendStartHour: number
+  sendEndHour: number
+  timezone: string
+  campaignDurationDays: number
+  status: 'active' | 'paused' | 'completed'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ScheduledEmail {
+  id: string
+  emailCampaignId: string
+  email: string
+  name?: string
+  subject: string
+  body: string
+  scheduledAt: string
+  status: 'pending' | 'sent' | 'failed'
+  sentAt?: string
+  errorMessage?: string
+  createdAt: string
+}
+
+// ============================================
 // DATABASE INITIALIZATION
 // ============================================
 
@@ -201,11 +235,50 @@ export async function initializeDatabase() {
       )
     `
 
+    // Create email_campaigns table
+    await db`
+      CREATE TABLE IF NOT EXISTS email_campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        creator_email VARCHAR(255) NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        send_days VARCHAR(50)[],
+        send_start_hour INT DEFAULT 9,
+        send_end_hour INT DEFAULT 17,
+        timezone VARCHAR(50) DEFAULT 'America/Toronto',
+        campaign_duration_days INT DEFAULT 5,
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
+    // Create scheduled_emails table
+    await db`
+      CREATE TABLE IF NOT EXISTS scheduled_emails (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email_campaign_id UUID REFERENCES email_campaigns(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        scheduled_at TIMESTAMP NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending',
+        sent_at TIMESTAMP,
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
     // Create indexes for performance
     await db`CREATE INDEX IF NOT EXISTS idx_scheduled_calls_status ON scheduled_calls(status)`
     await db`CREATE INDEX IF NOT EXISTS idx_scheduled_calls_scheduled_at ON scheduled_calls(scheduled_at)`
     await db`CREATE INDEX IF NOT EXISTS idx_call_logs_created_at ON call_logs(created_at DESC)`
     await db`CREATE INDEX IF NOT EXISTS idx_dnc_list_phone ON dnc_list(phone)`
+    await db`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status)`
+    await db`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_scheduled_at ON scheduled_emails(scheduled_at)`
+    await db`CREATE INDEX IF NOT EXISTS idx_email_campaigns_status ON email_campaigns(status)`
 
     // Add missing columns to campaigns table (for migrations from older schema)
     await db`
@@ -1103,5 +1176,239 @@ export async function getClientFutureCallsByPhone(campaignId: string, phone: str
   } catch (error) {
     console.error('[DB] Error getting future calls:', error)
     return null
+  }
+}
+
+// ============================================
+// EMAIL CAMPAIGN QUERIES
+// ============================================
+
+export async function createEmailCampaign(campaign: Omit<EmailCampaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<EmailCampaign> {
+  const db = getDb()
+  const result = await db`
+    INSERT INTO email_campaigns (name, creator_email, subject, body, send_days,
+                                  send_start_hour, send_end_hour, timezone,
+                                  campaign_duration_days, status)
+    VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.subject}, ${campaign.body},
+            ${campaign.sendDays}, ${campaign.sendStartHour}, ${campaign.sendEndHour},
+            ${campaign.timezone}, ${campaign.campaignDurationDays}, ${campaign.status})
+    RETURNING id, name, creator_email as "creatorEmail", subject, body,
+              send_days as "sendDays", send_start_hour as "sendStartHour",
+              send_end_hour as "sendEndHour", timezone,
+              campaign_duration_days as "campaignDurationDays", status,
+              created_at as "createdAt", updated_at as "updatedAt"
+  `
+  return result[0] as EmailCampaign
+}
+
+export async function getEmailCampaigns(): Promise<EmailCampaign[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, creator_email as "creatorEmail", subject, body,
+             send_days as "sendDays", send_start_hour as "sendStartHour",
+             send_end_hour as "sendEndHour", timezone,
+             campaign_duration_days as "campaignDurationDays", status,
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM email_campaigns
+      ORDER BY created_at DESC
+    `
+    return result as EmailCampaign[]
+  } catch (error) {
+    console.error('[DB] Error getting email campaigns:', error)
+    return []
+  }
+}
+
+export async function getEmailCampaignById(id: string): Promise<EmailCampaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, creator_email as "creatorEmail", subject, body,
+             send_days as "sendDays", send_start_hour as "sendStartHour",
+             send_end_hour as "sendEndHour", timezone,
+             campaign_duration_days as "campaignDurationDays", status,
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM email_campaigns WHERE id = ${id}
+    `
+    return result.length > 0 ? result[0] as EmailCampaign : null
+  } catch (error) {
+    console.error('[DB] Error getting email campaign:', error)
+    return null
+  }
+}
+
+export async function updateEmailCampaign(id: string, updates: Partial<EmailCampaign>): Promise<EmailCampaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE email_campaigns SET
+        name = COALESCE(${updates.name || null}, name),
+        subject = COALESCE(${updates.subject || null}, subject),
+        body = COALESCE(${updates.body || null}, body),
+        send_days = COALESCE(${updates.sendDays || null}, send_days),
+        send_start_hour = COALESCE(${updates.sendStartHour ?? null}, send_start_hour),
+        send_end_hour = COALESCE(${updates.sendEndHour ?? null}, send_end_hour),
+        campaign_duration_days = COALESCE(${updates.campaignDurationDays ?? null}, campaign_duration_days),
+        status = COALESCE(${updates.status || null}, status),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, name, creator_email as "creatorEmail", subject, body,
+                send_days as "sendDays", send_start_hour as "sendStartHour",
+                send_end_hour as "sendEndHour", timezone,
+                campaign_duration_days as "campaignDurationDays", status,
+                created_at as "createdAt", updated_at as "updatedAt"
+    `
+    return result.length > 0 ? result[0] as EmailCampaign : null
+  } catch (error) {
+    console.error('[DB] Error updating email campaign:', error)
+    return null
+  }
+}
+
+export async function deleteEmailCampaign(id: string): Promise<boolean> {
+  try {
+    const db = getDb()
+    await db`DELETE FROM email_campaigns WHERE id = ${id}`
+    return true
+  } catch (error) {
+    console.error('[DB] Error deleting email campaign:', error)
+    return false
+  }
+}
+
+export async function getEmailCampaignStats(campaignId: string): Promise<{
+  totalEmails: number
+  pending: number
+  sent: number
+  failed: number
+}> {
+  try {
+    const db = getDb()
+    const stats = await db`
+      SELECT
+        COUNT(*) as "totalEmails",
+        COUNT(*) FILTER (WHERE status = 'pending') as "pending",
+        COUNT(*) FILTER (WHERE status = 'sent') as "sent",
+        COUNT(*) FILTER (WHERE status = 'failed') as "failed"
+      FROM scheduled_emails
+      WHERE email_campaign_id = ${campaignId}
+    `
+    return {
+      totalEmails: Number(stats[0]?.totalEmails || 0),
+      pending: Number(stats[0]?.pending || 0),
+      sent: Number(stats[0]?.sent || 0),
+      failed: Number(stats[0]?.failed || 0)
+    }
+  } catch (error) {
+    console.error('[DB] Error getting email campaign stats:', error)
+    return { totalEmails: 0, pending: 0, sent: 0, failed: 0 }
+  }
+}
+
+// ============================================
+// SCHEDULED EMAIL QUERIES
+// ============================================
+
+export async function createScheduledEmail(email: Omit<ScheduledEmail, 'id' | 'createdAt'>): Promise<ScheduledEmail | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      INSERT INTO scheduled_emails (email_campaign_id, email, name, subject, body,
+                                     scheduled_at, status)
+      VALUES (${email.emailCampaignId}, ${email.email}, ${email.name || null},
+              ${email.subject}, ${email.body}, ${email.scheduledAt}, ${email.status})
+      RETURNING id, email_campaign_id as "emailCampaignId", email, name, subject, body,
+                scheduled_at as "scheduledAt", status, sent_at as "sentAt",
+                error_message as "errorMessage", created_at as "createdAt"
+    `
+    return result[0] as ScheduledEmail
+  } catch (error) {
+    console.error('[DB] Error creating scheduled email:', error)
+    return null
+  }
+}
+
+export async function getScheduledEmailsByCampaign(campaignId: string): Promise<ScheduledEmail[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, email_campaign_id as "emailCampaignId", email, name, subject, body,
+             scheduled_at as "scheduledAt", status, sent_at as "sentAt",
+             error_message as "errorMessage", created_at as "createdAt"
+      FROM scheduled_emails
+      WHERE email_campaign_id = ${campaignId}
+      ORDER BY scheduled_at ASC
+    `
+    return result as ScheduledEmail[]
+  } catch (error) {
+    console.error('[DB] Error getting scheduled emails:', error)
+    return []
+  }
+}
+
+export async function getNextPendingEmail(): Promise<ScheduledEmail | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT se.id, se.email_campaign_id as "emailCampaignId", se.email, se.name,
+             se.subject, se.body, se.scheduled_at as "scheduledAt", se.status,
+             se.sent_at as "sentAt", se.error_message as "errorMessage",
+             se.created_at as "createdAt"
+      FROM scheduled_emails se
+      JOIN email_campaigns ec ON se.email_campaign_id = ec.id
+      WHERE se.status = 'pending'
+        AND se.scheduled_at <= NOW()
+        AND ec.status = 'active'
+      ORDER BY se.scheduled_at ASC
+      LIMIT 1
+    `
+    return result.length > 0 ? result[0] as ScheduledEmail : null
+  } catch (error) {
+    console.error('[DB] Error getting next pending email:', error)
+    return null
+  }
+}
+
+export async function updateScheduledEmail(id: string, updates: Partial<ScheduledEmail>): Promise<ScheduledEmail | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE scheduled_emails SET
+        status = COALESCE(${updates.status || null}, status),
+        sent_at = COALESCE(${updates.sentAt || null}, sent_at),
+        error_message = COALESCE(${updates.errorMessage || null}, error_message)
+      WHERE id = ${id}
+      RETURNING id, email_campaign_id as "emailCampaignId", email, name, subject, body,
+                scheduled_at as "scheduledAt", status, sent_at as "sentAt",
+                error_message as "errorMessage", created_at as "createdAt"
+    `
+    return result.length > 0 ? result[0] as ScheduledEmail : null
+  } catch (error) {
+    console.error('[DB] Error updating scheduled email:', error)
+    return null
+  }
+}
+
+export async function getPendingEmailsToSend(limit: number = 10): Promise<ScheduledEmail[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT se.id, se.email_campaign_id as "emailCampaignId", se.email, se.name,
+             se.subject, se.body, se.scheduled_at as "scheduledAt", se.status,
+             se.sent_at as "sentAt", se.error_message as "errorMessage",
+             se.created_at as "createdAt"
+      FROM scheduled_emails se
+      JOIN email_campaigns ec ON se.email_campaign_id = ec.id
+      WHERE se.status = 'pending'
+        AND se.scheduled_at <= NOW()
+        AND ec.status = 'active'
+      ORDER BY se.scheduled_at ASC
+      LIMIT ${limit}
+    `
+    return result as ScheduledEmail[]
+  } catch (error) {
+    console.error('[DB] Error getting pending emails:', error)
+    return []
   }
 }

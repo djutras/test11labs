@@ -14,6 +14,13 @@ const CALLING_HOURS = {
   timezone: 'America/Toronto'
 }
 
+// Maximum concurrent calls to process at once
+// This increases throughput from ~12 calls/hour to ~60+ calls/hour
+const MAX_CONCURRENT_CALLS = 5
+
+// Small delay between initiating calls to respect Twilio's rate limits (1 call per second)
+const CALL_INITIATION_DELAY_MS = 150
+
 export async function GET(request: Request) {
   // Optional: Add a secret key for security
   const authHeader = request.headers.get('authorization')
@@ -135,12 +142,16 @@ export async function GET(request: Request) {
     `
     const inProgressCount = Number(inProgressResult[0]?.count || 0)
 
-    if (inProgressCount > 0) {
-      console.log('[Cron] Call already in progress, waiting')
-      return NextResponse.json({ message: 'Call in progress, waiting', count: inProgressCount })
+    // Check if we've hit the concurrent call limit
+    if (inProgressCount >= MAX_CONCURRENT_CALLS) {
+      console.log(`[Cron] Max concurrent calls reached (${inProgressCount}/${MAX_CONCURRENT_CALLS}), waiting`)
+      return NextResponse.json({ message: 'Max concurrent calls reached', count: inProgressCount, max: MAX_CONCURRENT_CALLS })
     }
 
-    // Get next pending call
+    // Calculate how many more calls we can initiate
+    const availableSlots = MAX_CONCURRENT_CALLS - inProgressCount
+
+    // Get pending calls (up to available slots)
     const pendingCallResult = await sql`
       SELECT
         sc.id, sc.campaign_id as "campaignId", sc.phone, sc.name,
@@ -152,7 +163,7 @@ export async function GET(request: Request) {
         AND sc.scheduled_at <= NOW()
         AND c.status = 'active'
       ORDER BY c.priority DESC, sc.scheduled_at ASC
-      LIMIT 1
+      LIMIT ${availableSlots}
     `
 
     if (pendingCallResult.length === 0) {
@@ -160,70 +171,120 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No pending calls' })
     }
 
-    const call = pendingCallResult[0]
-    console.log(`[Cron] Found call to process: ${call.id}, phone: ${call.phone}`)
+    console.log(`[Cron] Found ${pendingCallResult.length} calls to process (slots: ${availableSlots})`)
 
-    // Check DNC list
-    const dncResult = await sql`
-      SELECT COUNT(*) as count FROM dnc_list
-      WHERE (phone = ${call.phone}
-             OR phone = ${call.phone.replace('+1', '')}
-             OR phone = ${'+1' + call.phone.replace('+1', '')})
-        AND (campaign_id IS NULL OR campaign_id = ${call.campaignId})
-    `
-    const isDnc = Number(dncResult[0]?.count || 0) > 0
+    // Helper function to process a single call
+    async function processCall(call: typeof pendingCallResult[0]): Promise<{
+      success: boolean
+      phone: string
+      name: string | null
+      callSid?: string
+      error?: string
+      skipped?: boolean
+      skipReason?: string
+    }> {
+      try {
+        // Check DNC list
+        const dncResult = await sql`
+          SELECT COUNT(*) as count FROM dnc_list
+          WHERE (phone = ${call.phone}
+                 OR phone = ${call.phone.replace('+1', '')}
+                 OR phone = ${'+1' + call.phone.replace('+1', '')})
+            AND (campaign_id IS NULL OR campaign_id = ${call.campaignId})
+        `
+        const isDnc = Number(dncResult[0]?.count || 0) > 0
 
-    if (isDnc) {
-      console.log(`[Cron] Phone ${call.phone} is on DNC list, skipping`)
-      await sql`
-        UPDATE scheduled_calls SET status = 'dnc', skipped_reason = 'On DNC list'
-        WHERE id = ${call.id}
-      `
-      return NextResponse.json({ message: 'Phone on DNC, skipped' })
+        if (isDnc) {
+          console.log(`[Cron] Phone ${call.phone} is on DNC list, skipping`)
+          await sql`
+            UPDATE scheduled_calls SET status = 'dnc', skipped_reason = 'On DNC list'
+            WHERE id = ${call.id}
+          `
+          return { success: false, phone: call.phone, name: call.name, skipped: true, skipReason: 'DNC' }
+        }
+
+        // Mark call as in progress
+        await sql`
+          UPDATE scheduled_calls SET status = 'in_progress', updated_at = NOW() WHERE id = ${call.id}
+        `
+
+        // Prepare the first message with recording disclosure
+        const firstMessageWithDisclosure = call.recordingDisclosure
+          ? `${call.recordingDisclosure} ${call.firstMessage || ''}`
+          : call.firstMessage || ''
+
+        // Make the outbound call via our API
+        const callResponse = await fetch(`${baseUrl}/api/outbound-call`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            phoneNumber: call.phone,
+            firstMessage: firstMessageWithDisclosure,
+            fullPrompt: call.fullPrompt || '',
+            scheduledCallId: call.id,
+            campaignId: call.campaignId,
+            contactName: call.name || ''
+          })
+        })
+
+        const callResult = await callResponse.json()
+
+        if (callResult.success) {
+          console.log(`[Cron] Call initiated: ${call.phone} -> ${callResult.callSid}`)
+          return { success: true, phone: call.phone, name: call.name, callSid: callResult.callSid }
+        } else {
+          console.error(`[Cron] Failed to initiate call ${call.phone}: ${callResult.error}`)
+          await sql`
+            UPDATE scheduled_calls SET status = 'failed', skipped_reason = ${callResult.error || 'Unknown error'}
+            WHERE id = ${call.id}
+          `
+          return { success: false, phone: call.phone, name: call.name, error: callResult.error }
+        }
+      } catch (err) {
+        console.error(`[Cron] Error processing call ${call.phone}:`, err)
+        await sql`
+          UPDATE scheduled_calls SET status = 'failed', skipped_reason = ${String(err)}
+          WHERE id = ${call.id}
+        `
+        return { success: false, phone: call.phone, name: call.name, error: String(err) }
+      }
     }
 
-    // Mark call as in progress
-    await sql`
-      UPDATE scheduled_calls SET status = 'in_progress', updated_at = NOW() WHERE id = ${call.id}
-    `
+    // Process calls with small delays between them to respect Twilio rate limits
+    const results: Awaited<ReturnType<typeof processCall>>[] = []
 
-    // Prepare the first message with recording disclosure
-    const firstMessageWithDisclosure = call.recordingDisclosure
-      ? `${call.recordingDisclosure} ${call.firstMessage || ''}`
-      : call.firstMessage || ''
+    for (let i = 0; i < pendingCallResult.length; i++) {
+      const call = pendingCallResult[i]
 
-    // Make the outbound call via our API
-    const callResponse = await fetch(`${baseUrl}/api/outbound-call`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phoneNumber: call.phone,
-        firstMessage: firstMessageWithDisclosure,
-        fullPrompt: call.fullPrompt || '',
-        scheduledCallId: call.id,
-        campaignId: call.campaignId,
-        contactName: call.name || ''
-      })
+      // Add delay between calls (except for the first one)
+      if (i > 0) {
+        await new Promise(resolve => setTimeout(resolve, CALL_INITIATION_DELAY_MS))
+      }
+
+      const result = await processCall(call)
+      results.push(result)
+    }
+
+    const initiated = results.filter(r => r.success).length
+    const failed = results.filter(r => !r.success && !r.skipped).length
+    const skipped = results.filter(r => r.skipped).length
+
+    console.log(`[Cron] Batch complete: ${initiated} initiated, ${failed} failed, ${skipped} skipped`)
+
+    return NextResponse.json({
+      message: `Processed ${results.length} calls`,
+      initiated,
+      failed,
+      skipped,
+      results: results.map(r => ({
+        phone: r.phone,
+        name: r.name,
+        success: r.success,
+        callSid: r.callSid,
+        error: r.error,
+        skipReason: r.skipReason
+      }))
     })
-
-    const callResult = await callResponse.json()
-
-    if (callResult.success) {
-      console.log(`[Cron] Call initiated: ${callResult.callSid}`)
-      return NextResponse.json({
-        message: 'Call initiated',
-        phone: call.phone,
-        name: call.name,
-        callSid: callResult.callSid
-      })
-    } else {
-      console.error(`[Cron] Failed to initiate call: ${callResult.error}`)
-      await sql`
-        UPDATE scheduled_calls SET status = 'failed', skipped_reason = ${callResult.error || 'Unknown error'}
-        WHERE id = ${call.id}
-      `
-      return NextResponse.json({ error: 'Failed to initiate call', details: callResult.error }, { status: 500 })
-    }
   } catch (error) {
     console.error('[Cron] Error:', error)
     return NextResponse.json({ error: 'Internal error', details: String(error) }, { status: 500 })

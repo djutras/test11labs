@@ -452,6 +452,210 @@ export const translations = {
   french: {
     en: 'French',
     fr: 'Français'
+  },
+
+  // Email Campaign Translations
+  emailCampaign: {
+    en: 'Email Campaign',
+    fr: 'Campagne courriel'
+  },
+  newEmailCampaign: {
+    en: 'New Email Campaign',
+    fr: 'Nouvelle campagne courriel'
+  },
+  emailCampaignsTitle: {
+    en: 'Email Campaigns',
+    fr: 'Campagnes courriel'
+  },
+  emailCampaignsSubtitle: {
+    en: 'Manage your email campaigns',
+    fr: 'Gérez vos campagnes courriel'
+  },
+  emailSubject: {
+    en: 'Email Subject',
+    fr: 'Sujet du courriel'
+  },
+  emailSubjectPlaceholder: {
+    en: 'Enter the email subject...',
+    fr: 'Entrez le sujet du courriel...'
+  },
+  emailBody: {
+    en: 'Email Body',
+    fr: 'Corps du courriel'
+  },
+  emailBodyPlaceholder: {
+    en: 'Enter the email content...',
+    fr: 'Entrez le contenu du courriel...'
+  },
+  emailBodyDesc: {
+    en: 'The content that will be sent to recipients',
+    fr: 'Le contenu qui sera envoyé aux destinataires'
+  },
+  sendDays: {
+    en: 'Send Days',
+    fr: 'Jours d\'envoi'
+  },
+  sendStartHour: {
+    en: 'Send Start Hour',
+    fr: 'Heure de début d\'envoi'
+  },
+  sendEndHour: {
+    en: 'Send End Hour',
+    fr: 'Heure de fin d\'envoi'
+  },
+  campaignDuration: {
+    en: 'Campaign Duration',
+    fr: 'Durée de la campagne'
+  },
+  durationDays: {
+    en: 'days',
+    fr: 'jours'
+  },
+  durationWeeks: {
+    en: 'weeks',
+    fr: 'semaines'
+  },
+  schedulingDaily: {
+    en: 'Daily',
+    fr: 'Quotidien'
+  },
+  schedulingContinuous: {
+    en: 'Continuous',
+    fr: 'Continu'
+  },
+  schedulingWeekly: {
+    en: 'Weekly',
+    fr: 'Hebdomadaire'
+  },
+
+  // Email Status
+  emailPending: {
+    en: 'Pending',
+    fr: 'En attente'
+  },
+  emailSent: {
+    en: 'Sent',
+    fr: 'Envoyé'
+  },
+  emailFailed: {
+    en: 'Failed',
+    fr: 'Échoué'
+  },
+
+  // Email Campaign Details
+  scheduledEmails: {
+    en: 'Scheduled Emails',
+    fr: 'Courriels programmés'
+  },
+  noScheduledEmails: {
+    en: 'No scheduled emails yet',
+    fr: 'Aucun courriel programmé'
+  },
+  noScheduledEmailsDesc: {
+    en: 'Upload a CSV file to add contacts to this campaign',
+    fr: 'Importez un fichier CSV pour ajouter des contacts à cette campagne'
+  },
+  emailAddress: {
+    en: 'Email Address',
+    fr: 'Adresse courriel'
+  },
+  csvEmailFormat: {
+    en: 'CSV Format',
+    fr: 'Format CSV'
+  },
+  csvEmailFormatDesc: {
+    en: 'email (required), name (optional), subject (optional)',
+    fr: 'email (requis), name (optionnel), subject (optionnel)'
+  },
+
+  // Email Campaign Errors
+  errorCreateEmailCampaign: {
+    en: 'Failed to create email campaign',
+    fr: 'Échec de la création de la campagne courriel'
+  },
+  errorUpdateEmailCampaign: {
+    en: 'Failed to update email campaign',
+    fr: 'Échec de la mise à jour de la campagne courriel'
+  },
+  errorLoadEmailCampaign: {
+    en: 'Failed to load email campaign',
+    fr: 'Échec du chargement de la campagne courriel'
+  },
+  errorGenerateEmail: {
+    en: 'Failed to generate email content',
+    fr: 'Échec de la génération du contenu courriel'
+  },
+
+  // Duration Options
+  duration1Day: {
+    en: '1 day',
+    fr: '1 jour'
+  },
+  duration2Days: {
+    en: '2 days',
+    fr: '2 jours'
+  },
+  duration3Days: {
+    en: '3 days',
+    fr: '3 jours'
+  },
+  duration4Days: {
+    en: '4 days',
+    fr: '4 jours'
+  },
+  duration5Days: {
+    en: '5 days',
+    fr: '5 jours'
+  },
+  duration6Days: {
+    en: '6 days',
+    fr: '6 jours'
+  },
+  duration7Days: {
+    en: '7 days',
+    fr: '7 jours'
+  },
+  duration8Days: {
+    en: '8 days',
+    fr: '8 jours'
+  },
+  duration9Days: {
+    en: '9 days',
+    fr: '9 jours'
+  },
+  duration10Days: {
+    en: '10 days',
+    fr: '10 jours'
+  },
+  durationContinuous: {
+    en: 'Continuous (every day)',
+    fr: 'Continu (tous les jours)'
+  },
+  duration4Weeks: {
+    en: '4 weeks',
+    fr: '4 semaines'
+  },
+  duration12Weeks: {
+    en: '12 weeks',
+    fr: '12 semaines'
+  },
+  duration24Weeks: {
+    en: '24 weeks',
+    fr: '24 semaines'
+  },
+  duration48Weeks: {
+    en: '48 weeks',
+    fr: '48 semaines'
+  },
+
+  // Create Email Campaign
+  createEmailCampaignTitle: {
+    en: 'Create Email Campaign',
+    fr: 'Créer une campagne courriel'
+  },
+  createEmailCampaignSubtitle: {
+    en: 'Set up a new email campaign',
+    fr: 'Configurer une nouvelle campagne courriel'
   }
 } as const
 
