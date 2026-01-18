@@ -27,51 +27,7 @@ function escapeXml(text: string): string {
 // POST: Appel entrant initial
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData()
-    const from = formData.get('From') as string
-    const to = formData.get('To') as string
-    const callSid = formData.get('CallSid') as string
-
-    console.log(`[Twilio] Incoming call from ${from} to ${to} (SID: ${callSid})`)
-
-    // Chercher le client dans la base de données
-    const client = await findClientByPhone(from)
-
-    // Générer les prompts dynamiques
-    let fullPrompt: string
-    let firstMessage: string
-
-    if (client) {
-      console.log(`[Twilio] Client found: ${client.name}`)
-
-      fullPrompt = `Tu es Nicolas, assistant virtuel de Compta I A.
-Tu parles à ${client.name}, client de ${client.accountant || 'Compta I A'}.
-${client.lastInteraction ? `Contexte de la dernière interaction: ${client.lastInteraction}` : ''}
-
-RÈGLES:
-- Sois professionnel et chaleureux
-- Réponds en français québécois naturel
-- Si question complexe, propose de transférer à un comptable
-- Garde les réponses concises pour la conversation téléphonique`
-
-      firstMessage = `Bonjour ${client.name}! Ici Nicolas de Compta I A. Comment puis-je vous aider aujourd'hui?`
-    } else {
-      console.log(`[Twilio] New caller: ${from}`)
-
-      fullPrompt = `Tu es Nicolas, assistant virtuel de Compta I A.
-Un nouveau client appelle. Identifie ses besoins et collecte ses informations.
-
-RÈGLES:
-- Sois professionnel et accueillant
-- Demande le nom du client
-- Comprends ses besoins comptables
-- Réponds en français québécois naturel
-- Si question complexe, propose de transférer à un comptable`
-
-      firstMessage = `Bonjour! Ici Nicolas de Compta I A. À qui ai-je le plaisir de parler?`
-    }
-
-    // Forward call to human instead of ElevenLabs AI
+    // Forward call to human - simple and fast
     const response = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
   <Dial>${FORWARD_PHONE_NUMBER}</Dial>
