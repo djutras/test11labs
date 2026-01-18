@@ -656,6 +656,156 @@ export const translations = {
   createEmailCampaignSubtitle: {
     en: 'Set up a new email campaign',
     fr: 'Configurer une nouvelle campagne courriel'
+  },
+
+  // SMS Campaign Translations
+  smsCampaign: {
+    en: 'SMS Campaign',
+    fr: 'Campagne texto'
+  },
+  smsCampaigns: {
+    en: 'SMS Campaigns',
+    fr: 'Campagnes texto'
+  },
+  newSmsCampaign: {
+    en: 'New SMS Campaign',
+    fr: 'Nouvelle campagne texto'
+  },
+  smsCampaignsTitle: {
+    en: 'SMS Campaigns',
+    fr: 'Campagnes texto'
+  },
+  smsCampaignsSubtitle: {
+    en: 'Manage your SMS campaigns',
+    fr: 'Gérez vos campagnes texto'
+  },
+  smsMessage: {
+    en: 'SMS Message',
+    fr: 'Message SMS'
+  },
+  smsMessagePlaceholder: {
+    en: 'Enter your SMS message (max 160 characters)...',
+    fr: 'Entrez votre message SMS (max 160 caractères)...'
+  },
+  smsMessageDesc: {
+    en: 'The message that will be sent to recipients (160 chars = 1 SMS)',
+    fr: 'Le message qui sera envoyé aux destinataires (160 car. = 1 SMS)'
+  },
+  frequencyType: {
+    en: 'Frequency Type',
+    fr: 'Type de fréquence'
+  },
+  frequencyWeekly: {
+    en: 'Weekly',
+    fr: 'Hebdomadaire'
+  },
+  frequencyMonthly: {
+    en: 'Monthly',
+    fr: 'Mensuel'
+  },
+  frequencyValue: {
+    en: 'Frequency',
+    fr: 'Fréquence'
+  },
+  week: {
+    en: 'week',
+    fr: 'semaine'
+  },
+  weeks: {
+    en: 'weeks',
+    fr: 'semaines'
+  },
+  month: {
+    en: 'month',
+    fr: 'mois'
+  },
+  months: {
+    en: 'months',
+    fr: 'mois'
+  },
+  stopSms: {
+    en: 'Stop',
+    fr: 'Arrêter'
+  },
+  resumeSms: {
+    en: 'Resume',
+    fr: 'Repartir'
+  },
+  scheduledSms: {
+    en: 'Scheduled SMS',
+    fr: 'SMS programmés'
+  },
+  noScheduledSms: {
+    en: 'No scheduled SMS yet',
+    fr: 'Aucun SMS programmé'
+  },
+  noScheduledSmsDesc: {
+    en: 'Upload a CSV file to add contacts to this campaign',
+    fr: 'Importez un fichier CSV pour ajouter des contacts à cette campagne'
+  },
+  smsPending: {
+    en: 'Pending',
+    fr: 'En attente'
+  },
+  smsSent: {
+    en: 'Sent',
+    fr: 'Envoyé'
+  },
+  smsFailed: {
+    en: 'Failed',
+    fr: 'Échoué'
+  },
+  smsPaused: {
+    en: 'Paused',
+    fr: 'En pause'
+  },
+  csvSmsFormat: {
+    en: 'CSV Format',
+    fr: 'Format CSV'
+  },
+  csvSmsFormatDesc: {
+    en: 'phone (required), name (optional)',
+    fr: 'phone (requis), name (optionnel)'
+  },
+  createSmsCampaignTitle: {
+    en: 'Create SMS Campaign',
+    fr: 'Créer une campagne texto'
+  },
+  createSmsCampaignSubtitle: {
+    en: 'Set up a new SMS campaign',
+    fr: 'Configurer une nouvelle campagne texto'
+  },
+  errorCreateSmsCampaign: {
+    en: 'Failed to create SMS campaign',
+    fr: 'Échec de la création de la campagne texto'
+  },
+  errorUpdateSmsCampaign: {
+    en: 'Failed to update SMS campaign',
+    fr: 'Échec de la mise à jour de la campagne texto'
+  },
+  errorLoadSmsCampaign: {
+    en: 'Failed to load SMS campaign',
+    fr: 'Échec du chargement de la campagne texto'
+  },
+  errorGenerateSms: {
+    en: 'Failed to generate SMS content',
+    fr: 'Échec de la génération du contenu SMS'
+  },
+  generateWithAI: {
+    en: 'Generate with AI',
+    fr: 'Générer avec IA'
+  },
+  charactersRemaining: {
+    en: 'characters remaining',
+    fr: 'caractères restants'
+  },
+  characterCount: {
+    en: 'characters',
+    fr: 'caractères'
+  },
+  smsSegments: {
+    en: 'SMS segments',
+    fr: 'segments SMS'
   }
 } as const
 

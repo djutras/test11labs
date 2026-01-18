@@ -134,6 +134,39 @@ export interface ScheduledEmail {
 }
 
 // ============================================
+// SMS CAMPAIGN INTERFACES
+// ============================================
+
+export interface SmsCampaign {
+  id: string
+  name: string
+  creatorEmail: string
+  message: string
+  sendDays: string[]
+  sendStartHour: number
+  sendEndHour: number
+  timezone: string
+  frequencyType: 'weekly' | 'monthly'
+  frequencyValue: number  // 1-4 weeks or 1-12 months
+  status: 'active' | 'paused' | 'completed'
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ScheduledSms {
+  id: string
+  smsCampaignId: string
+  phone: string
+  name?: string
+  message: string
+  scheduledAt: string
+  status: 'pending' | 'sent' | 'failed' | 'paused'
+  twilioSid?: string
+  errorMessage?: string
+  createdAt: string
+}
+
+// ============================================
 // DATABASE INITIALIZATION
 // ============================================
 
@@ -271,6 +304,41 @@ export async function initializeDatabase() {
       )
     `
 
+    // Create sms_campaigns table
+    await db`
+      CREATE TABLE IF NOT EXISTS sms_campaigns (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        creator_email VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        send_days VARCHAR(50)[],
+        send_start_hour INT DEFAULT 9,
+        send_end_hour INT DEFAULT 17,
+        timezone VARCHAR(50) DEFAULT 'America/Toronto',
+        frequency_type VARCHAR(20) DEFAULT 'weekly',
+        frequency_value INT DEFAULT 1,
+        status VARCHAR(20) DEFAULT 'active',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
+    // Create scheduled_sms table
+    await db`
+      CREATE TABLE IF NOT EXISTS scheduled_sms (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        sms_campaign_id UUID REFERENCES sms_campaigns(id) ON DELETE CASCADE,
+        phone VARCHAR(20) NOT NULL,
+        name VARCHAR(255),
+        message TEXT NOT NULL,
+        scheduled_at TIMESTAMP NOT NULL,
+        status VARCHAR(20) DEFAULT 'pending',
+        twilio_sid VARCHAR(255),
+        error_message TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `
+
     // Create indexes for performance
     await db`CREATE INDEX IF NOT EXISTS idx_scheduled_calls_status ON scheduled_calls(status)`
     await db`CREATE INDEX IF NOT EXISTS idx_scheduled_calls_scheduled_at ON scheduled_calls(scheduled_at)`
@@ -279,6 +347,9 @@ export async function initializeDatabase() {
     await db`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_status ON scheduled_emails(status)`
     await db`CREATE INDEX IF NOT EXISTS idx_scheduled_emails_scheduled_at ON scheduled_emails(scheduled_at)`
     await db`CREATE INDEX IF NOT EXISTS idx_email_campaigns_status ON email_campaigns(status)`
+    await db`CREATE INDEX IF NOT EXISTS idx_sms_campaigns_status ON sms_campaigns(status)`
+    await db`CREATE INDEX IF NOT EXISTS idx_scheduled_sms_status ON scheduled_sms(status)`
+    await db`CREATE INDEX IF NOT EXISTS idx_scheduled_sms_scheduled_at ON scheduled_sms(scheduled_at)`
 
     // Add missing columns to campaigns table (for migrations from older schema)
     await db`
@@ -1409,6 +1480,271 @@ export async function getPendingEmailsToSend(limit: number = 10): Promise<Schedu
     return result as ScheduledEmail[]
   } catch (error) {
     console.error('[DB] Error getting pending emails:', error)
+    return []
+  }
+}
+
+// ============================================
+// SMS CAMPAIGN QUERIES
+// ============================================
+
+export async function createSmsCampaign(campaign: Omit<SmsCampaign, 'id' | 'createdAt' | 'updatedAt'>): Promise<SmsCampaign> {
+  const db = getDb()
+  const result = await db`
+    INSERT INTO sms_campaigns (name, creator_email, message, send_days,
+                                send_start_hour, send_end_hour, timezone,
+                                frequency_type, frequency_value, status)
+    VALUES (${campaign.name}, ${campaign.creatorEmail}, ${campaign.message},
+            ${campaign.sendDays}, ${campaign.sendStartHour}, ${campaign.sendEndHour},
+            ${campaign.timezone}, ${campaign.frequencyType}, ${campaign.frequencyValue},
+            ${campaign.status})
+    RETURNING id, name, creator_email as "creatorEmail", message,
+              send_days as "sendDays", send_start_hour as "sendStartHour",
+              send_end_hour as "sendEndHour", timezone,
+              frequency_type as "frequencyType", frequency_value as "frequencyValue",
+              status, created_at as "createdAt", updated_at as "updatedAt"
+  `
+  return result[0] as SmsCampaign
+}
+
+export async function getSmsCampaigns(): Promise<SmsCampaign[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, creator_email as "creatorEmail", message,
+             send_days as "sendDays", send_start_hour as "sendStartHour",
+             send_end_hour as "sendEndHour", timezone,
+             frequency_type as "frequencyType", frequency_value as "frequencyValue",
+             status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM sms_campaigns
+      ORDER BY created_at DESC
+    `
+    return result as SmsCampaign[]
+  } catch (error) {
+    console.error('[DB] Error getting SMS campaigns:', error)
+    return []
+  }
+}
+
+export async function getSmsCampaignById(id: string): Promise<SmsCampaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, name, creator_email as "creatorEmail", message,
+             send_days as "sendDays", send_start_hour as "sendStartHour",
+             send_end_hour as "sendEndHour", timezone,
+             frequency_type as "frequencyType", frequency_value as "frequencyValue",
+             status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM sms_campaigns WHERE id = ${id}
+    `
+    return result.length > 0 ? result[0] as SmsCampaign : null
+  } catch (error) {
+    console.error('[DB] Error getting SMS campaign:', error)
+    return null
+  }
+}
+
+export async function updateSmsCampaign(id: string, updates: Partial<SmsCampaign>): Promise<SmsCampaign | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE sms_campaigns SET
+        name = COALESCE(${updates.name || null}, name),
+        message = COALESCE(${updates.message || null}, message),
+        send_days = COALESCE(${updates.sendDays || null}, send_days),
+        send_start_hour = COALESCE(${updates.sendStartHour ?? null}, send_start_hour),
+        send_end_hour = COALESCE(${updates.sendEndHour ?? null}, send_end_hour),
+        frequency_type = COALESCE(${updates.frequencyType || null}, frequency_type),
+        frequency_value = COALESCE(${updates.frequencyValue ?? null}, frequency_value),
+        status = COALESCE(${updates.status || null}, status),
+        updated_at = NOW()
+      WHERE id = ${id}
+      RETURNING id, name, creator_email as "creatorEmail", message,
+                send_days as "sendDays", send_start_hour as "sendStartHour",
+                send_end_hour as "sendEndHour", timezone,
+                frequency_type as "frequencyType", frequency_value as "frequencyValue",
+                status, created_at as "createdAt", updated_at as "updatedAt"
+    `
+    return result.length > 0 ? result[0] as SmsCampaign : null
+  } catch (error) {
+    console.error('[DB] Error updating SMS campaign:', error)
+    return null
+  }
+}
+
+export async function deleteSmsCampaign(id: string): Promise<boolean> {
+  try {
+    const db = getDb()
+    await db`DELETE FROM sms_campaigns WHERE id = ${id}`
+    return true
+  } catch (error) {
+    console.error('[DB] Error deleting SMS campaign:', error)
+    return false
+  }
+}
+
+export async function getSmsCampaignStats(campaignId: string): Promise<{
+  totalSms: number
+  pending: number
+  sent: number
+  failed: number
+  paused: number
+}> {
+  try {
+    const db = getDb()
+    const stats = await db`
+      SELECT
+        COUNT(*) as "totalSms",
+        COUNT(*) FILTER (WHERE status = 'pending') as "pending",
+        COUNT(*) FILTER (WHERE status = 'sent') as "sent",
+        COUNT(*) FILTER (WHERE status = 'failed') as "failed",
+        COUNT(*) FILTER (WHERE status = 'paused') as "paused"
+      FROM scheduled_sms
+      WHERE sms_campaign_id = ${campaignId}
+    `
+    return {
+      totalSms: Number(stats[0]?.totalSms || 0),
+      pending: Number(stats[0]?.pending || 0),
+      sent: Number(stats[0]?.sent || 0),
+      failed: Number(stats[0]?.failed || 0),
+      paused: Number(stats[0]?.paused || 0)
+    }
+  } catch (error) {
+    console.error('[DB] Error getting SMS campaign stats:', error)
+    return { totalSms: 0, pending: 0, sent: 0, failed: 0, paused: 0 }
+  }
+}
+
+// ============================================
+// SCHEDULED SMS QUERIES
+// ============================================
+
+export async function createScheduledSms(sms: Omit<ScheduledSms, 'id' | 'createdAt'>): Promise<ScheduledSms | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      INSERT INTO scheduled_sms (sms_campaign_id, phone, name, message,
+                                  scheduled_at, status)
+      VALUES (${sms.smsCampaignId}, ${sms.phone}, ${sms.name || null},
+              ${sms.message}, ${sms.scheduledAt}, ${sms.status})
+      RETURNING id, sms_campaign_id as "smsCampaignId", phone, name, message,
+                scheduled_at as "scheduledAt", status, twilio_sid as "twilioSid",
+                error_message as "errorMessage", created_at as "createdAt"
+    `
+    return result[0] as ScheduledSms
+  } catch (error) {
+    console.error('[DB] Error creating scheduled SMS:', error)
+    return null
+  }
+}
+
+export async function getScheduledSmsByCampaign(campaignId: string): Promise<ScheduledSms[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT id, sms_campaign_id as "smsCampaignId", phone, name, message,
+             scheduled_at as "scheduledAt", status, twilio_sid as "twilioSid",
+             error_message as "errorMessage", created_at as "createdAt"
+      FROM scheduled_sms
+      WHERE sms_campaign_id = ${campaignId}
+      ORDER BY scheduled_at ASC
+    `
+    return result as ScheduledSms[]
+  } catch (error) {
+    console.error('[DB] Error getting scheduled SMS:', error)
+    return []
+  }
+}
+
+export async function getNextPendingSms(): Promise<ScheduledSms | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT ss.id, ss.sms_campaign_id as "smsCampaignId", ss.phone, ss.name,
+             ss.message, ss.scheduled_at as "scheduledAt", ss.status,
+             ss.twilio_sid as "twilioSid", ss.error_message as "errorMessage",
+             ss.created_at as "createdAt"
+      FROM scheduled_sms ss
+      JOIN sms_campaigns sc ON ss.sms_campaign_id = sc.id
+      WHERE ss.status = 'pending'
+        AND ss.scheduled_at <= NOW()
+        AND sc.status = 'active'
+      ORDER BY ss.scheduled_at ASC
+      LIMIT 1
+    `
+    return result.length > 0 ? result[0] as ScheduledSms : null
+  } catch (error) {
+    console.error('[DB] Error getting next pending SMS:', error)
+    return null
+  }
+}
+
+export async function updateScheduledSms(id: string, updates: Partial<ScheduledSms>): Promise<ScheduledSms | null> {
+  try {
+    const db = getDb()
+    const result = await db`
+      UPDATE scheduled_sms SET
+        status = COALESCE(${updates.status || null}, status),
+        twilio_sid = COALESCE(${updates.twilioSid || null}, twilio_sid),
+        error_message = COALESCE(${updates.errorMessage || null}, error_message)
+      WHERE id = ${id}
+      RETURNING id, sms_campaign_id as "smsCampaignId", phone, name, message,
+                scheduled_at as "scheduledAt", status, twilio_sid as "twilioSid",
+                error_message as "errorMessage", created_at as "createdAt"
+    `
+    return result.length > 0 ? result[0] as ScheduledSms : null
+  } catch (error) {
+    console.error('[DB] Error updating scheduled SMS:', error)
+    return null
+  }
+}
+
+export async function toggleSmsStatus(id: string): Promise<ScheduledSms | null> {
+  try {
+    const db = getDb()
+    // First get the current status
+    const current = await db`
+      SELECT status FROM scheduled_sms WHERE id = ${id}
+    `
+    if (current.length === 0) return null
+
+    const currentStatus = current[0].status
+    const newStatus = currentStatus === 'pending' ? 'paused' : currentStatus === 'paused' ? 'pending' : currentStatus
+
+    const result = await db`
+      UPDATE scheduled_sms SET
+        status = ${newStatus}
+      WHERE id = ${id}
+      RETURNING id, sms_campaign_id as "smsCampaignId", phone, name, message,
+                scheduled_at as "scheduledAt", status, twilio_sid as "twilioSid",
+                error_message as "errorMessage", created_at as "createdAt"
+    `
+    return result.length > 0 ? result[0] as ScheduledSms : null
+  } catch (error) {
+    console.error('[DB] Error toggling SMS status:', error)
+    return null
+  }
+}
+
+export async function getPendingSmsToSend(limit: number = 10): Promise<ScheduledSms[]> {
+  try {
+    const db = getDb()
+    const result = await db`
+      SELECT ss.id, ss.sms_campaign_id as "smsCampaignId", ss.phone, ss.name,
+             ss.message, ss.scheduled_at as "scheduledAt", ss.status,
+             ss.twilio_sid as "twilioSid", ss.error_message as "errorMessage",
+             ss.created_at as "createdAt"
+      FROM scheduled_sms ss
+      JOIN sms_campaigns sc ON ss.sms_campaign_id = sc.id
+      WHERE ss.status = 'pending'
+        AND ss.scheduled_at <= NOW()
+        AND sc.status = 'active'
+      ORDER BY ss.scheduled_at ASC
+      LIMIT ${limit}
+    `
+    return result as ScheduledSms[]
+  } catch (error) {
+    console.error('[DB] Error getting pending SMS:', error)
     return []
   }
 }

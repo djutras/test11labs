@@ -36,8 +36,8 @@ export async function sendEmail(options: SendEmailOptions): Promise<SendEmailRes
     }
   }
 
-  const senderEmail = fromEmail || process.env.SENDGRID_FROM_EMAIL || 'noreply@comptaia.ca'
-  const senderName = fromName || process.env.SENDGRID_FROM_NAME || 'ComptaIA'
+  const senderEmail = fromEmail || process.env.SENDGRID_FROM_EMAIL || 'info@opportunitesparcourriel.com'
+  const senderName = fromName || process.env.SENDGRID_FROM_NAME || 'Opportunités par Courriel'
 
   const msg = {
     to,
