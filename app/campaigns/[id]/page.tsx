@@ -173,10 +173,18 @@ export default function CampaignDetailPage() {
     const auth = localStorage.getItem('authenticated')
     if (auth !== 'true') {
       router.push('/login')
-    } else {
-      setIsAuthenticated(true)
-      loadCampaign()
+      return
     }
+
+    setIsAuthenticated(true)
+    loadCampaign()
+
+    // Auto-refresh every 5 minutes
+    const interval = setInterval(() => {
+      loadCampaign()
+    }, 5 * 60 * 1000) // 5 minutes
+
+    return () => clearInterval(interval)
   }, [router, campaignId])
 
   const loadCampaign = async () => {
