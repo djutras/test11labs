@@ -174,7 +174,7 @@ export async function GET(request: Request) {
     console.log(`[Cron] Found ${pendingCallResult.length} calls to process (slots: ${availableSlots})`)
 
     // Helper function to process a single call
-    async function processCall(call: typeof pendingCallResult[0]): Promise<{
+    const processCall = async (call: typeof pendingCallResult[0]): Promise<{
       success: boolean
       phone: string
       name: string | null
@@ -182,7 +182,7 @@ export async function GET(request: Request) {
       error?: string
       skipped?: boolean
       skipReason?: string
-    }> {
+    }> => {
       try {
         // Check DNC list
         const dncResult = await sql`
